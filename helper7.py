@@ -171,7 +171,9 @@ tm = TopicsManager("topics.db")
 # ВНИМАНИЕ: Модуль статистики находится в стадии разработки и тестирования
 # Используется PostgreSQL для хранения данных аналитики
 # В production окружении убедитесь, что база данных настроена корректно
-sm = StatsManager()
+# ОТКЛЮЧЕНО: Раскомментируйте когда настроите PostgreSQL
+# sm = StatsManager()
+sm = None
 
 # Импорт тематик при первом запуске (если база пустая)
 stats = tm.get_statistics()
@@ -296,17 +298,18 @@ def send_ticket(problem, screenshots=None, topic_info=None):
             except:
                 pass
 
-        sm.log_request(
-            result_type=sm.RESULT_TICKET_CREATED,
-            problem_description=problem,
-            department=department,
-            name=name,
-            workplace=workplace,
-            problem_id=session.get('problem_id'),
-            subproblem_id=session.get('current_subproblem_id'),
-            topic_id=topic_id,
-            topic_name=topic_name
-        )
+        if sm:
+            sm.log_request(
+                result_type=sm.RESULT_TICKET_CREATED,
+                problem_description=problem,
+                department=department,
+                name=name,
+                workplace=workplace,
+                problem_id=session.get('problem_id'),
+                subproblem_id=session.get('current_subproblem_id'),
+                topic_id=topic_id,
+                topic_name=topic_name
+            )
 
         return msg
     except Exception as e:
@@ -400,15 +403,16 @@ def send_solved_ticket(problem):
             )
 
             # Логируем в PostgreSQL для статистики
-            sm.log_request(
-                result_type=sm.RESULT_SOLVED_BY_HELPER,
-                problem_description=problem,
-                department=department,
-                name=name,
-                workplace=workplace,
-                problem_id=session.get('problem_id'),
-                subproblem_id=session.get('current_subproblem_id')
-            )
+            if sm:
+                sm.log_request(
+                    result_type=sm.RESULT_SOLVED_BY_HELPER,
+                    problem_description=problem,
+                    department=department,
+                    name=name,
+                    workplace=workplace,
+                    problem_id=session.get('problem_id'),
+                    subproblem_id=session.get('current_subproblem_id')
+                )
         except Exception as e:
             print(f"Ошибка при отправке решённой заявки: {e}")
             traceback.print_exc()
@@ -452,15 +456,16 @@ def send_video_feedback(problem, helped):
             )
 
             # Логируем в PostgreSQL для статистики
-            sm.log_request(
-                result_type=result_type,
-                problem_description=problem,
-                department=department,
-                name=name,
-                workplace=workplace,
-                problem_id=session.get('problem_id'),
-                subproblem_id=session.get('current_subproblem_id')
-            )
+            if sm:
+                sm.log_request(
+                    result_type=result_type,
+                    problem_description=problem,
+                    department=department,
+                    name=name,
+                    workplace=workplace,
+                    problem_id=session.get('problem_id'),
+                    subproblem_id=session.get('current_subproblem_id')
+                )
         except Exception as e:
             print(f"Ошибка при отправке фидбека по видео: {e}")
             traceback.print_exc()
@@ -1826,6 +1831,11 @@ def admin_stats_dashboard():
 @AdminAuth.login_required
 def api_stats_summary():
     """API для получения общей статистики"""
+    if not sm:
+        return jsonify({
+            'success': False,
+            'error': 'Модуль статистики отключен. Настройте PostgreSQL.'
+        }), 503
     try:
         days = request.args.get('days', 30, type=int)
         # Ограничиваем период от 1 до 365 дней
@@ -1849,6 +1859,11 @@ def api_stats_summary():
 @AdminAuth.login_required
 def api_stats_top_problems():
     """API для получения топ проблем"""
+    if not sm:
+        return jsonify({
+            'success': False,
+            'error': 'Модуль статистики отключен. Настройте PostgreSQL.'
+        }), 503
     try:
         limit = request.args.get('limit', 10, type=int)
         days = request.args.get('days', 30, type=int)
@@ -1875,6 +1890,11 @@ def api_stats_top_problems():
 @AdminAuth.login_required
 def api_stats_departments():
     """API для получения статистики по отделам"""
+    if not sm:
+        return jsonify({
+            'success': False,
+            'error': 'Модуль статистики отключен. Настройте PostgreSQL.'
+        }), 503
     try:
         days = request.args.get('days', 30, type=int)
         days = max(1, min(days, 365))
@@ -1897,6 +1917,11 @@ def api_stats_departments():
 @AdminAuth.login_required
 def api_stats_timeline():
     """API для получения статистики по дням (для графика)"""
+    if not sm:
+        return jsonify({
+            'success': False,
+            'error': 'Модуль статистики отключен. Настройте PostgreSQL.'
+        }), 503
     try:
         days = request.args.get('days', 30, type=int)
         days = max(1, min(days, 365))
