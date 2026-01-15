@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Импорт тематик из Excel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        h1 {
+            color: #007b7e;
+            font-size: 28px;
+        }
+
+        h2 {
+            color: #007b7e;
+            font-size: 20px;
+            margin-bottom: 15px;
+            margin-top: 30px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+            color: white;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+            color: #000;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-left: 4px solid #0bb17c;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #007b7e;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            color: #555;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            background: white;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #0bb17c;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-danger, .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .alert-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .help-text {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border: 1px solid #2196F3;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .info-title {
+            font-weight: 600;
+            color: #1565C0;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .info-list {
+            margin-left: 20px;
+            color: #1565C0;
+            font-size: 14px;
+        }
+
+        .info-list li {
+            margin-bottom: 5px;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .warning-title {
+            font-weight: 600;
+            color: #856404;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .warning-text {
+            color: #856404;
+            font-size: 14px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .action-buttons button,
+        .action-buttons a {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📥 Импорт тематик из Excel</h1>
+            <div style="display: flex; gap: 10px;">
+                <a href="{{ url_for('admin_topics') }}" class="btn btn-secondary">Назад к тематикам</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Статистика -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.total_topics }}</div>
+                <div class="stat-label">Текущих тематик</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.unique_channels }}</div>
+                <div class="stat-label">Каналов</div>
+            </div>
+        </div>
+
+        <!-- Информация о формате файла -->
+        <div class="info-box">
+            <div class="info-title">📋 Требования к Excel файлу:</div>
+            <ul class="info-list">
+                <li><strong>Формат:</strong> .xlsx или .xls</li>
+                <li><strong>Обязательные колонки:</strong>
+                    <ul>
+                        <li><code>name</code> или <code>Канал</code> - название канала</li>
+                        <li><code>sr1</code> - уровень 1</li>
+                        <li><code>sr2</code> - уровень 2</li>
+                        <li><code>sr3</code> - уровень 3</li>
+                        <li><code>SR</code> или <code>full_topic</code> - полная тематика</li>
+                    </ul>
+                </li>
+                <li><strong>Опциональные колонки:</strong>
+                    <ul>
+                        <li><code>sr4</code> - уровень 4</li>
+                        <li><code>subject_type</code> - тип обращения (Консультация/Претензия)</li>
+                    </ul>
+                </li>
+                <li><strong>Название листа:</strong> по умолчанию "subject_category"</li>
+            </ul>
+        </div>
+
+        <!-- Форма загрузки -->
+        <h2>Загрузка файла</h2>
+        <div class="form-section">
+            <form method="POST" action="{{ url_for('admin_import_topics_upload') }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="form-group">
+                    <label for="file">Выберите Excel файл *</label>
+                    <input type="file" id="file" name="file" accept=".xlsx,.xls" required>
+                    <div class="help-text">
+                        Поддерживаются форматы: .xlsx, .xls
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="sheet_name">Название листа в Excel файле</label>
+                    <input type="text" id="sheet_name" name="sheet_name"
+                           value="subject_category" placeholder="subject_category">
+                    <div class="help-text">
+                        Оставьте "subject_category" если используете стандартный формат
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="clear_existing" name="clear_existing" checked>
+                        <label for="clear_existing" style="margin: 0;">
+                            Удалить все существующие тематики перед импортом (рекомендуется)
+                        </label>
+                    </div>
+                    <div class="help-text">
+                        ⚠️ По умолчанию включено, так как файл тематик обычно содержит актуальную полную версию
+                    </div>
+                </div>
+
+                <div class="warning-box" style="display: block;" id="warning-clear">
+                    <div class="warning-title">⚠️ ПРЕДУПРЕЖДЕНИЕ</div>
+                    <div class="warning-text">
+                        Вы выбрали удаление всех существующих тематик. Это действие необратимо!
+                        Если нужно добавить тематики к существующим, снимите галочку выше.
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="submit" class="btn btn-success">
+                        📥 Загрузить и импортировать
+                    </button>
+                    <a href="{{ url_for('admin_topics') }}" class="btn btn-secondary">
+                        Отмена
+                    </a>
+                </div>
+            </form>
+        </div>
+
+        <!-- Дополнительные действия -->
+        <h2>Дополнительные действия</h2>
+        <div class="action-buttons">
+            <a href="{{ url_for('admin_export_topics') }}" class="btn btn-primary">
+                📤 Экспортировать текущие тематики
+            </a>
+            <a href="{{ url_for('admin_list_topics') }}" class="btn btn-secondary">
+                📋 Просмотреть все тематики
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // Показываем предупреждение при выборе удаления существующих тематик
+        const clearCheckbox = document.getElementById('clear_existing');
+        const warningBox = document.getElementById('warning-clear');
+
+        clearCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                warningBox.style.display = 'block';
+            } else {
+                warningBox.style.display = 'none';
+            }
+        });
+
+        // Подтверждение перед отправкой формы при удалении
+        document.querySelector('form').addEventListener('submit', function(e) {
+            if (clearCheckbox.checked) {
+                if (!confirm('Вы уверены, что хотите удалить все существующие тематики? Это действие нельзя отменить!')) {
+                    e.preventDefault();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

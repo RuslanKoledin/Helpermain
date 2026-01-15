@@ -1,9 +1,31 @@
 admins.json
-.env
+
+# Локальные видео-мануалы (большие файлы)
+static/videos/*.mp4
+static/videos/*.avi
+static/videos/*.mov
+static/videos/*.webm
+
+# Временные файлы импорта/экспорта
+temp_uploads/
+temp_exports/
+*.xlsx
+*.xls
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-*.db
-*.zip
-venv/
+*.pyd
+
+# Переменные окружения
+.env
+
+# macOS
 .DS_Store
+
+# База данных (если не хотите коммитить)
+# topics.db
+
+# Архивы
+*.zip
