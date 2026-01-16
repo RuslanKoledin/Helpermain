@@ -261,11 +261,17 @@ class TopicsManager:
         try:
             # Security Fix: Prevent path traversal attacks
             import os
+            import tempfile
             file_path = os.path.abspath(file_path)
-            # Ensure file is in current directory or subdirectory
+
+            # Разрешаем файлы из текущей директории или временной директории
             current_dir = os.path.abspath('.')
-            if not file_path.startswith(current_dir):
+            temp_dir = tempfile.gettempdir()
+
+            # Проверяем, что файл находится либо в рабочей директории, либо во временной
+            if not (file_path.startswith(current_dir) or file_path.startswith(temp_dir)):
                 return {"success": False, "error": "Invalid file path (path traversal detected)"}
+
             # Check file exists and is actually a file
             if not os.path.exists(file_path):
                 return {"success": False, "error": "File not found"}
@@ -291,11 +297,17 @@ class TopicsManager:
         try:
             # Security Fix: Prevent path traversal attacks
             import os
+            import tempfile
             file_path = os.path.abspath(file_path)
-            # Ensure file is in current directory or subdirectory
+
+            # Разрешаем файлы из текущей директории или временной директории
             current_dir = os.path.abspath('.')
-            if not file_path.startswith(current_dir):
+            temp_dir = tempfile.gettempdir()
+
+            # Проверяем, что файл находится либо в рабочей директории, либо во временной
+            if not (file_path.startswith(current_dir) or file_path.startswith(temp_dir)):
                 return {"success": False, "error": "Invalid file path (path traversal detected)"}
+
             # Check file exists and is actually a file
             if not os.path.exists(file_path):
                 return {"success": False, "error": "File not found"}
@@ -320,7 +332,7 @@ class TopicsManager:
         column_mapping = {}
         for col in df.columns:
             col_lower = col.lower().strip()
-            if 'канал' in col_lower or 'channel' in col_lower:
+            if 'канал' in col_lower or 'channel' in col_lower or col_lower == 'name':
                 column_mapping['channel'] = col
             elif col_lower in ['sr1', 'sr 1', 'уровень 1', 'level 1']:
                 column_mapping['sr1'] = col
@@ -332,9 +344,9 @@ class TopicsManager:
                 column_mapping['sr4'] = col
             elif col_lower in ['sr', 'тематика', 'topic', 'полная тематика']:
                 column_mapping['full_topic'] = col
-        
+
         if 'channel' not in column_mapping:
-            return {"success": False, "error": "Не найдена колонка 'Канал' или 'Channel'"}
+            return {"success": False, "error": "Не найдена колонка 'Канал', 'Channel' или 'name'"}
         
         # Импортируем данные
         for idx, row in df.iterrows():

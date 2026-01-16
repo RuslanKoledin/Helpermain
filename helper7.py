@@ -84,7 +84,6 @@ def rate_limit(max_requests: int = 60, window: int = 60):
     return decorator
 
 app = Flask(__name__)
-csrf = CSRFProtect(app)
 
 # Secret key must be set in environment variables
 FLASK_SECRET_KEY = os.getenv('FLASK_SECRET_KEY')
@@ -94,12 +93,17 @@ if not FLASK_SECRET_KEY:
     exit(1)
 app.secret_key = FLASK_SECRET_KEY
 
+# CSRF Configuration
+app.config['WTF_CSRF_ENABLED'] = True
+app.config['WTF_CSRF_TIME_LIMIT'] = None  # No time limit for CSRF tokens
+csrf = CSRFProtect(app)
+
 # Security configurations for production
 # Security Fix: Always use secure cookies in production
 IS_DEVELOPMENT = os.getenv('FLASK_ENV', 'production') == 'development'
-app.config['SESSION_COOKIE_SECURE'] = not IS_DEVELOPMENT  # Secure cookies only in production (requires HTTPS)
+app.config['SESSION_COOKIE_SECURE'] = False  # Disabled for HTTP (enable in production with HTTPS)
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' if IS_DEVELOPMENT else 'Strict'  # Lax for dev, Strict for production
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Lax for better compatibility
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session timeout
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max request size (DoS protection)
 
@@ -1810,6 +1814,119 @@ def admin_list_topics():
                          page=page,
                          total=total,
                          per_page=per_page)
+
+
+@app.route('/admin/topics/import', methods=['GET'])
+@AdminAuth.login_required
+def admin_import_topics():
+    """Страница импорта тематик из Excel"""
+    stats = tm.get_statistics()
+    return render_template('admin_import_topics.html', stats=stats)
+
+
+@app.route('/admin/topics/import', methods=['POST'])
+@AdminAuth.login_required
+@rate_limit(max_requests=5, window=60)
+def admin_import_topics_upload():
+    """Обработка загрузки Excel файла с тематиками"""
+    try:
+        # Проверяем наличие файла
+        if 'file' not in request.files:
+            flash('Файл не выбран', 'error')
+            return redirect(url_for('admin_import_topics'))
+
+        file = request.files['file']
+        if file.filename == '':
+            flash('Файл не выбран', 'error')
+            return redirect(url_for('admin_import_topics'))
+
+        # Проверяем расширение файла
+        if not (file.filename.lower().endswith('.xlsx') or file.filename.lower().endswith('.xls')):
+            flash('Неверный формат файла. Поддерживаются только .xlsx и .xls', 'error')
+            return redirect(url_for('admin_import_topics'))
+
+        # Получаем параметры
+        sheet_name = request.form.get('sheet_name', 'subject_category').strip()
+        clear_existing = request.form.get('clear_existing') == 'on'
+
+        # Сохраняем файл временно
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            file.save(tmp_file.name)
+            tmp_path = tmp_file.name
+
+        try:
+            # Удаляем все существующие тематики если требуется
+            if clear_existing:
+                cursor = tm.conn.cursor()
+                cursor.execute("DELETE FROM topics")
+                tm.conn.commit()
+                print(f"[admin_import_topics_upload] Все существующие тематики удалены")
+
+            # Импортируем из Excel
+            result = tm.import_from_excel(tmp_path, sheet_name=sheet_name)
+
+            if result['success']:
+                flash(f'✅ Успешно импортировано тематик: {result["imported"]}', 'success')
+                print(f"[admin_import_topics_upload] Импортировано: {result['imported']} тематик")
+                if result.get('errors'):
+                    flash(f'⚠️ Ошибки при импорте: {len(result["errors"])} строк', 'warning')
+                    print(f"[admin_import_topics_upload] Ошибок: {len(result['errors'])}")
+            else:
+                flash(f'❌ Ошибка импорта: {result.get("error", "Неизвестная ошибка")}', 'error')
+                print(f"[admin_import_topics_upload] Ошибка: {result.get('error')}")
+
+        finally:
+            # Удаляем временный файл
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    except Exception as e:
+        print(f"[admin_import_topics_upload] Ошибка: {e}")
+        traceback.print_exc()
+        flash(f'Произошла ошибка при импорте: {str(e)}', 'error')
+
+    return redirect(url_for('admin_import_topics'))
+
+
+@app.route('/admin/topics/export')
+@AdminAuth.login_required
+def admin_export_topics():
+    """Экспорт всех тематик в Excel"""
+    try:
+        import tempfile
+        import os
+        from flask import send_file
+        from datetime import datetime
+
+        # Создаем временный файл
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        tmp_path = tmp_file.name
+        tmp_file.close()
+
+        # Экспортируем в Excel
+        result = tm.export_to_excel(tmp_path)
+
+        if result['success']:
+            print(f"[admin_export_topics] Экспортировано: {result['exported']} тематик")
+            # Отправляем файл пользователю
+            return send_file(
+                tmp_path,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name=f'topics_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            )
+        else:
+            flash(f'Ошибка экспорта: {result.get("error", "Неизвестная ошибка")}', 'error')
+            return redirect(url_for('admin_topics'))
+
+    except Exception as e:
+        print(f"[admin_export_topics] Ошибка: {e}")
+        traceback.print_exc()
+        flash(f'Произошла ошибка при экспорте: {str(e)}', 'error')
+        return redirect(url_for('admin_topics'))
 
 
 # ============================================
