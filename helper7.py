@@ -235,6 +235,13 @@ def get_file_url(file_id):
         # Validate file_id format to prevent injection
         if not isinstance(file_id, str) or len(file_id) > 200:
             return None
+
+        # Check if it's a local video file (stored in static/videos/)
+        if file_id.endswith('.MOV') or file_id.endswith('.mov') or file_id.endswith('.mp4'):
+            # Return URL for static file
+            return url_for('static', filename=f'videos/{file_id}')
+
+        # Otherwise, it's a Telegram file_id - get it from Telegram API
         file_info = bot.get_file(file_id)
         return f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
     except telebot.apihelper.ApiTelegramException as e:

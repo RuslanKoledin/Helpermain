@@ -136,9 +136,38 @@
             font-size: 64px;
             margin-bottom: 20px;
         }
+
+        .back-link {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            font-size: 14px;
+            text-decoration: none;
+            color: #ffffff;
+            font-weight: 600;
+            background: rgba(255, 165, 0, 0.3);
+            backdrop-filter: blur(10px);
+            padding: 8px 16px;
+            border: 2px solid rgba(255, 165, 0, 0.5);
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .back-link:hover {
+            background: rgba(255, 165, 0, 0.5);
+            border-color: rgba(255, 165, 0, 0.7);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
+    <a href="{{ url_for('choose_help_type') }}" class="back-link">
+        🏠 К проблемам
+    </a>
     <div class="container">
         <div class="header">
             <h1>📚 Управление мануалами</h1>
