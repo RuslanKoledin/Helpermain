@@ -4,16 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=www-data
-Group=www-data
-WorkingDirectory=/path/to/helper1bezsidebar
-Environment="PATH=/usr/bin:/usr/local/bin"
+User=fudo
+WorkingDirectory=/home/fudo/HelperMain/helperT/Helper
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 
-# Загрузка переменных окружения из .env файла
-EnvironmentFile=/path/to/helper1bezsidebar/.env
-
-# Команда запуска бота
-ExecStart=/usr/bin/python3 /path/to/helper1bezsidebar/bot.py
+# Команда запуска бота через python из venv
+ExecStart=/home/fudo/HelperMain/helperT/venv/bin/python3 /home/fudo/HelperMain/helperT/Helper/bot.py
 
 # Автоматический перезапуск при падении
 Restart=always
@@ -23,10 +19,6 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=helper-bot
-
-# Ограничения безопасности
-NoNewPrivileges=true
-PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
