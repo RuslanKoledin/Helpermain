@@ -69,6 +69,41 @@ http://localhost:5003/
 2. Войти как `admin` / `admin123`
 3. Проверить доступ к админ-панели
 
+## Назначение ролей администраторов
+
+### Способ 1: По логинам (РЕКОМЕНДУЕТСЯ)
+
+В файле `.env` укажите логины пользователей:
+
+```bash
+# Обычные администраторы
+AD_ADMINS=r_koledin,a_ivanov,i_petrov
+
+# Супер-администраторы
+AD_SUPER_ADMINS=r_koledin
+```
+
+**Приоритет ролей:**
+1. `AD_SUPER_ADMINS` - высшая роль (super_admin)
+2. `AD_ADMINS` - обычные админы (admin)
+3. `AD_ADMIN_GROUP` - группа в Active Directory (super_admin)
+4. По умолчанию - редактор (editor)
+
+### Способ 2: По группе AD
+
+```bash
+AD_ADMIN_GROUP=CN=HelperAdmins,OU=Groups,DC=mbank,DC=local
+```
+
+Пользователи из этой группы получат роль `super_admin`.
+
+### Тестирование ролей
+
+Запустите скрипт для проверки:
+```bash
+python3 test_admin_roles.py
+```
+
 ## Важно!
 
 После получения настроек AD от сисадминов:
@@ -77,8 +112,9 @@ http://localhost:5003/
    - `AD_SERVER`
    - `AD_DOMAIN`
    - `AD_BASE_DN`
-   - `AD_ADMIN_GROUP`
-3. Перезапустите сервер
+   - `AD_ADMIN_GROUP` (опционально)
+3. Укажите логины администраторов в `AD_ADMINS` и `AD_SUPER_ADMINS`
+4. Перезапустите сервер
 
 ## Логи
 
