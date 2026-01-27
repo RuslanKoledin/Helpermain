@@ -221,11 +221,11 @@
             <div class="video-feedback-container" style="text-align: center; margin: 30px 0; padding: 25px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 16px; border: 2px solid #dee2e6;">
                 <p style="font-size: 18px; font-weight: 600; margin-bottom: 20px; color: #333;">Видео-инструкция помогла решить проблему?</p>
                 <div style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
-                    <button onclick="location.href='{{ url_for('video_feedback', result='helped') }}'"
+                    <button onclick="handleVideoFeedback('helped')"
                             style="padding: 12px 30px; font-size: 16px; font-weight: 600; border: none; border-radius: 10px; cursor: pointer; background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); color: white; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);">
                         Да, помогло ✅
                     </button>
-                    <button onclick="location.href='{{ url_for('video_feedback', result='not_helped') }}'"
+                    <button onclick="handleVideoFeedback('not_helped')"
                             style="padding: 12px 30px; font-size: 16px; font-weight: 600; border: none; border-radius: 10px; cursor: pointer; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);">
                         Нет, не помогло ❌
                     </button>
@@ -257,13 +257,75 @@
 
             <div class="buttons-container">
                 <p>Я решил вашу проблему?</p>
-                <button class="solved-button" onclick="location.href='{{ url_for('finish_solved') }}'">Да, решил</button>
-                <form action="{{ url_for('send_final_ticket') }}" method="GET" style="display: inline;">
-                    <button class="ticket-button" type="submit">Нет, не решил</button>
-                </form>
+                <button class="solved-button" id="btn-solved" onclick="handleSolved()">Да, решил</button>
+                <button class="ticket-button" id="btn-unsolved" onclick="handleUnsolved()">Нет, не решил</button>
             </div>
         {% endif %}
     </div>
+
+    <script>
+        // Защита от множественных нажатий
+        let isProcessing = false;
+
+        function disableAllButtons() {
+            // Отключаем все кнопки на странице
+            document.querySelectorAll('button').forEach(btn => {
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+                btn.style.cursor = 'not-allowed';
+            });
+        }
+
+        function showProcessing() {
+            // Показываем индикатор обработки
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+            `;
+            overlay.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: 15px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                    <div style="font-size: 48px; margin-bottom: 15px;">⏳</div>
+                    <div style="font-size: 18px; font-weight: 600; color: #333;">Обработка...</div>
+                    <div style="font-size: 14px; color: #888; margin-top: 8px;">Пожалуйста, подождите</div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+
+        function handleSolved() {
+            if (isProcessing) return;
+            isProcessing = true;
+            disableAllButtons();
+            showProcessing();
+            location.href = '{{ url_for('finish_solved') }}';
+        }
+
+        function handleUnsolved() {
+            if (isProcessing) return;
+            isProcessing = true;
+            disableAllButtons();
+            showProcessing();
+            location.href = '{{ url_for('send_final_ticket') }}';
+        }
+
+        // Защита для видео-опроса
+        function handleVideoFeedback(result) {
+            if (isProcessing) return;
+            isProcessing = true;
+            disableAllButtons();
+            showProcessing();
+            location.href = '/video_feedback/' + result;
+        }
+    </script>
 </body>
 </html>
 
