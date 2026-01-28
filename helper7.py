@@ -780,6 +780,11 @@ def show_manual(subproblem_id):
     # Обрезаем лишние символы и экранируем HTML
     manual_title = m_escape(str(raw_manual_title).strip()[:200])  # ограничим длину, защита от XSS
     session['problem_title'] = manual_title
+
+    # Сбрасываем флаги отправки при выборе нового мануала
+    session.pop('ticket_sent', None)
+    session.pop('solved_sent', None)
+    session.modified = True
     session['current_subproblem_id'] = subproblem_id  # Сохраняем для возврата после опроса по видео
 
     # Проверяем, нужна ли форма для добавления скриншотов
@@ -886,8 +891,18 @@ def other_problem():
 @app.route('/send_final_ticket')
 def send_final_ticket():
     try:
+        # Проверяем флаг - была ли уже отправлена заявка
+        if session.get('ticket_sent'):
+            # Заявка уже отправлена, просто показываем страницу
+            return render_template('ticket_sent.html')
+
+        # Отправляем заявку только если флаг не установлен
         problem_description = session.get('problem_title', 'Неизвестная проблема')
         send_ticket(problem_description)
+
+        # Устанавливаем флаг что заявка отправлена
+        session['ticket_sent'] = True
+        session.modified = True
 
         return render_template('ticket_sent.html')
     except Exception as e:
@@ -898,8 +913,18 @@ def send_final_ticket():
 @app.route('/finish_solved')
 def finish_solved():
     try:
+        # Проверяем флаг - было ли уже отправлено уведомление
+        if session.get('solved_sent'):
+            # Уведомление уже отправлено, просто показываем страницу
+            return render_template('success.html')
+
+        # Отправляем уведомление только если флаг не установлен
         problem_description = session.get('problem_title', 'Неизвестная проблема')
         send_solved_ticket(problem_description)
+
+        # Устанавливаем флаг что уведомление отправлено
+        session['solved_sent'] = True
+        session.modified = True
 
         # вместо очистки сессии показываем страницу успеха
         return render_template('success.html')  # там будет кнопка "На главную"
@@ -930,6 +955,11 @@ def finish_unsolved():
 
 @app.route('/go_home')
 def go_home():
+    # Сбрасываем флаги отправки при возврате на главную
+    session.pop('ticket_sent', None)
+    session.pop('solved_sent', None)
+    session.modified = True
+
     # Security: don't log session content
     if 'user_info' in session:
         return redirect(url_for('show_problems'))
