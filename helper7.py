@@ -654,16 +654,6 @@ def select_problem(problem_id):
         print(f"[select_problem] Invalid problem_id format: {problem_id}")
         abort(404)
 
-    try:
-        problem_id_int = int(problem_id)
-        if problem_id_int < 1 or problem_id_int > 7:
-            print(f"[select_problem] problem_id out of range: {problem_id}")
-            abort(404)
-    except ValueError:
-        print(f"[select_problem] Invalid problem_id (not an integer): {problem_id}")
-        abort(404)
-
-    # --- Белый список проблем ---
     # Загружаем актуальные мануалы из JSON
     manuals = load_manuals()
     if problem_id not in manuals:
@@ -728,15 +718,27 @@ def select_problem(problem_id):
             print(f"[select_problem] Redirecting to other_problem for problem_id: {problem_id}")
             return redirect(url_for('other_problem'))
 
-        # --- Обрабатываем фото ---
+        # --- Обрабатываем фото (показываем все шаги, даже без фото) ---
         photo_urls_with_captions = []
         for photo in problem_data.get('photos', []):
-            url = get_file_url(photo.get('id'))
-            if not url:
-                continue
+            photo_id = photo.get('id')
+            url = get_file_url(photo_id) if photo_id else None
             caption = photo.get('caption', '')
             safe_caption = m_escape(str(caption).strip()[:300])
+            # Добавляем ВСЕ шаги, даже если фото удалено (url = None)
             photo_urls_with_captions.append({'url': url, 'caption': safe_caption})
+
+        # --- Обрабатываем видео если есть ---
+        video_data = None
+        if 'video' in problem_data and problem_data['video'] is not None:
+            video_id = problem_data['video'].get('id')
+            if video_id:
+                video_url = get_file_url(video_id)
+                if video_url:
+                    video_data = {
+                        'url': video_url,
+                        'caption': m_escape(str(problem_data['video'].get('caption', 'Видео-инструкция')).strip()[:300])
+                    }
 
         # --- Экранируем и передаём безопасные данные ---
         safe_manual_data = deep_escape(problem_data)
@@ -747,7 +749,8 @@ def select_problem(problem_id):
             'manual.html',
             manual=safe_manual_data,
             manual_title=manual_title,
-            photo_urls_with_captions=safe_photos
+            photo_urls_with_captions=safe_photos,
+            video_data=video_data
         )
 
 @app.route('/show_manual/<string:subproblem_id>')
@@ -805,7 +808,7 @@ def show_manual(subproblem_id):
 
     # Получаем видео если есть
     video_data = None
-    if 'video' in subproblem_data:
+    if 'video' in subproblem_data and subproblem_data['video'] is not None:
         video_id = subproblem_data['video'].get('id')
         if video_id:
             video_url = get_file_url(video_id)
@@ -915,8 +918,8 @@ def finish_solved():
     try:
         # Проверяем флаг - было ли уже отправлено уведомление
         if session.get('solved_sent'):
-            # Уведомление уже отправлено, просто показываем страницу
-            return render_template('success.html')
+            # Уведомление уже отправлено, редирект на страницу успеха
+            return redirect(url_for('show_success'))
 
         # Отправляем уведомление только если флаг не установлен
         problem_description = session.get('problem_title', 'Неизвестная проблема')
@@ -926,12 +929,18 @@ def finish_solved():
         session['solved_sent'] = True
         session.modified = True
 
-        # вместо очистки сессии показываем страницу успеха
-        return render_template('success.html')  # там будет кнопка "На главную"
+        # Редирект на страницу успеха (POST-Redirect-GET pattern)
+        return redirect(url_for('show_success'))
 
     except Exception as e:
         print(f"Ошибка при отправке сообщения: {e}")
         return "Произошла ошибка, но сессия сохранена."
+
+
+@app.route('/success')
+def show_success():
+    """Страница успешного решения проблемы"""
+    return render_template('success.html')
 
 
 # --- Обновлённый маршрут finish_unsolved с логированием ---
@@ -1206,20 +1215,29 @@ def handle_channel_messages(message):
 @app.route('/login', methods=['GET', 'POST'])
 def user_login():
     """Страница входа для всех пользователей через AD"""
+    # Проверяем, нужно ли показать ошибку (только после POST запроса)
+    show_error = request.args.get('error')
+    error_message = None
+
+    if show_error == 'invalid':
+        error_message = 'Неверный логин или пароль'
+    elif show_error == 'rate_limit':
+        error_message = 'Слишком много попыток входа. Попробуйте через 15 минут.'
+    elif show_error == 'credentials':
+        error_message = 'Некорректные учётные данные'
+
     if request.method == 'POST':
         # Rate limiting для защиты от brute force
         ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
         if not rate_limiter.check_login_attempt(ip, max_attempts=5, window=900):
-            flash('Слишком много попыток входа. Попробуйте через 15 минут.')
-            return redirect(url_for('user_login')), 429
+            return redirect(url_for('user_login', error='rate_limit')), 429
 
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
 
         # Валидация длины
         if len(username) > 100 or len(password) > 128:
-            flash('Некорректные учётные данные')
-            return redirect(url_for('user_login'))
+            return redirect(url_for('user_login', error='credentials'))
 
         # Аутентификация через AD
         from ad_auth import ad_auth
@@ -1240,10 +1258,9 @@ def user_login():
             # Переходим к выбору типа помощи
             return redirect(url_for('choose_help_type'))
         else:
-            flash('Неверный логин или пароль')
-            return redirect(url_for('user_login'))
+            return redirect(url_for('user_login', error='invalid'))
 
-    return render_template('user_login.html')
+    return render_template('user_login.html', error_message=error_message)
 
 @app.route('/enter_workplace', methods=['GET', 'POST'])
 def enter_workplace():
@@ -1321,6 +1338,66 @@ def admin_dashboard():
     return render_template('admin_dashboard.html', manuals=manuals)
 
 
+@app.route('/admin/manual/create', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_create_manual():
+    """Создание нового мануала"""
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        manual_type = request.form.get('manual_type', 'with_subproblems').strip()
+
+        # Валидация
+        if not title:
+            flash('Название обязательно для заполнения')
+            return render_template('admin_create_manual.html')
+
+        # Загружаем существующие мануалы
+        manuals = admin_manager.load_manuals()
+
+        # Автоматически находим следующий свободный ID
+        existing_ids = []
+        for mid in manuals.keys():
+            try:
+                existing_ids.append(int(mid))
+            except ValueError:
+                pass
+
+        # Находим следующий свободный номер
+        manual_id = '1'
+        if existing_ids:
+            manual_id = str(max(existing_ids) + 1)
+
+        # Добавляем номер к названию (если его там ещё нет)
+        sanitized_title = admin_manager.sanitize_text(title, 200)
+        if not sanitized_title.startswith(f"{manual_id}."):
+            sanitized_title = f"{manual_id}. {sanitized_title}"
+
+        # Создаём новый мануал в зависимости от типа
+        if manual_type == 'simple':
+            # Простой мануал без подпроблем
+            manuals[manual_id] = {
+                "title": sanitized_title,
+                "photos": []
+            }
+        else:
+            # Мануал с подпроблемами
+            manuals[manual_id] = {
+                "title": sanitized_title,
+                "subproblems": {}
+            }
+
+        # Сохраняем
+        if admin_manager.save_manuals(manuals):
+            flash(f'Мануал "{title}" успешно создан!')
+            return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+        else:
+            flash('Ошибка при сохранении мануала')
+            return render_template('admin_create_manual.html')
+
+    # GET request - показываем форму
+    return render_template('admin_create_manual.html')
+
+
 @app.route('/admin/manual/<string:manual_id>/edit')
 @AdminAuth.login_required
 def admin_edit_manual(manual_id):
@@ -1335,12 +1412,186 @@ def admin_edit_manual(manual_id):
         flash('Мануал не найден')
         return redirect(url_for('admin_dashboard'))
 
-    # Если есть подпроблемы - показываем список подпроблем
-    if 'subproblems' in manual and manual['subproblems']:
+    # Если есть поле subproblems - показываем список подпроблем (даже если пустой)
+    if 'subproblems' in manual:
         return render_template('admin_manual_subproblems.html', manual_id=manual_id, manual=manual)
 
-    # Если нет подпроблем - редактируем сам мануал (старая логика для обратной совместимости)
-    return render_template('admin_edit_manual.html', manual_id=manual_id, manual=manual, photo_urls={}, video_urls={})
+    # Если нет поля subproblems - это простой мануал, редактируем его напрямую
+    # Используем ту же страницу что и для подпроблем, но с ID = manual_id (без точки)
+    return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
+
+
+@app.route('/admin/manual/<string:manual_id>/subproblem/create', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_create_subproblem(manual_id):
+    """Создание новой подпроблемы"""
+    # Валидация
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
+
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+
+        # Валидация
+        if not title:
+            flash('Название обязательно для заполнения')
+            return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+
+        # Проверка на существование
+        if 'subproblems' not in manual:
+            manual['subproblems'] = {}
+
+        # Автоматически находим следующий свободный номер
+        existing_nums = []
+        for subp_id in manual['subproblems'].keys():
+            # Извлекаем номер после точки (например, из "8.1" получаем 1)
+            if '.' in subp_id:
+                try:
+                    num = int(subp_id.split('.')[1])
+                    existing_nums.append(num)
+                except ValueError:
+                    pass
+
+        # Находим следующий свободный номер
+        next_num = 1
+        if existing_nums:
+            next_num = max(existing_nums) + 1
+
+        # Формируем полный ID подпроблемы
+        subproblem_id = f"{manual_id}.{next_num}"
+
+        # Создаём новую подпроблему
+        manual['subproblems'][subproblem_id] = {
+            "title": admin_manager.sanitize_text(title, 200),
+            "photos": [],
+            "video": None
+        }
+
+        # Сохраняем
+        if admin_manager.save_manuals(manuals):
+            flash(f'Подпроблема "{title}" успешно создана!')
+            return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+        else:
+            flash('Ошибка при сохранении подпроблемы')
+            return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+
+    # GET request - показываем форму
+    return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+
+
+@app.route('/admin/manual/<string:manual_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_delete_manual(manual_id):
+    """Удаление мануала"""
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
+
+    manuals = admin_manager.load_manuals()
+
+    if manual_id not in manuals:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    manual_title = manuals[manual_id].get('title', 'Неизвестный мануал')
+
+    # Удаляем мануал
+    del manuals[manual_id]
+
+    if admin_manager.save_manuals(manuals):
+        flash(f'Мануал "{manual_title}" успешно удалён')
+    else:
+        flash('Ошибка при удалении мануала')
+
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_delete_subproblem(manual_id, subproblem_id):
+    """Удаление подпроблемы"""
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
+
+    if not admin_manager.validate_subproblem_id(subproblem_id):
+        flash('Некорректный ID подпроблемы')
+        return redirect(url_for('admin_dashboard'))
+
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
+        flash('Подпроблема не найдена')
+        return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+
+    subproblem_title = manual['subproblems'][subproblem_id].get('title', 'Неизвестная подпроблема')
+
+    # Удаляем подпроблему
+    del manual['subproblems'][subproblem_id]
+
+    if admin_manager.save_manuals(manuals):
+        flash(f'Подпроблема "{subproblem_title}" успешно удалена')
+    else:
+        flash('Ошибка при удалении подпроблемы')
+
+    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+
+
+@app.route('/admin/manual/<string:manual_id>/edit-simple')
+@AdminAuth.login_required
+def admin_edit_simple_manual(manual_id):
+    """Страница редактирования простого мануала (без подпроблем)"""
+    # Валидация ID
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
+
+    manual = admin_manager.get_manual(manual_id)
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    # Проверяем что это простой мануал
+    if 'subproblems' in manual:
+        flash('Этот мануал содержит подпроблемы')
+        return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+
+    # Получаем URLs для фотографий
+    photo_urls = []
+    if 'photos' in manual:
+        for photo in manual['photos']:
+            url = get_file_url(photo.get('id'))
+            photo_urls.append(url)
+
+    # Получаем URL для видео если есть
+    video_url = None
+    if 'video' in manual and manual['video'] is not None:
+        video_id = manual['video'].get('id')
+        if video_id:
+            video_url = get_file_url(video_id)
+
+    # Используем тот же template что и для подпроблем, но передаём manual вместо subproblem
+    return render_template('admin_edit_subproblem.html',
+                         manual_id=manual_id,
+                         manual_title=manual.get('title', ''),
+                         subproblem_id=manual_id,  # Для простых мануалов subproblem_id = manual_id
+                         subproblem=manual,  # Передаём сам мануал как "подпроблему"
+                         photo_urls=photo_urls,
+                         video_url=video_url,
+                         is_simple_manual=True)  # Флаг что это простой мануал
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/edit')
@@ -1377,7 +1628,7 @@ def admin_edit_subproblem(manual_id, subproblem_id):
 
     # Получаем URL для видео если есть
     video_url = None
-    if 'video' in subproblem:
+    if 'video' in subproblem and subproblem['video'] is not None:
         video_id = subproblem['video'].get('id')
         if video_id:
             video_url = get_file_url(video_id)
@@ -1443,16 +1694,24 @@ def admin_update_subproblem(manual_id, subproblem_id):
         flash('Мануал не найден')
         return redirect(url_for('admin_dashboard'))
 
-    # Проверяем существование подпроблемы
-    if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
-        flash('Подпроблема не найдена')
-        return redirect(url_for('admin_edit_manual', manual_id=manual_id))
-
-    subproblem = manual['subproblems'][subproblem_id]
+    # Определяем тип мануала и получаем нужный объект
+    if 'subproblems' in manual:
+        # Мануал с подпроблемами
+        if subproblem_id not in manual['subproblems']:
+            flash('Подпроблема не найдена')
+            return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+        target_obj = manual['subproblems'][subproblem_id]
+        redirect_url = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
+        success_message = 'Подпроблема успешно обновлена'
+    else:
+        # Простой мануал
+        target_obj = manual
+        redirect_url = url_for('admin_edit_simple_manual', manual_id=manual_id)
+        success_message = 'Мануал успешно обновлён'
 
     # Обновляем подписи к фото
-    if 'photos' in subproblem:
-        for photo_index, photo in enumerate(subproblem['photos']):
+    if 'photos' in target_obj:
+        for photo_index, photo in enumerate(target_obj['photos']):
             caption_field = f'caption_{photo_index}'
             if caption_field in request.form:
                 new_caption = request.form.get(caption_field, '').strip()
@@ -1460,20 +1719,20 @@ def admin_update_subproblem(manual_id, subproblem_id):
                 photo['caption'] = new_caption
 
     # Обновляем подпись к видео если есть
-    if 'video' in subproblem:
+    if 'video' in target_obj:
         video_caption_field = 'video_caption'
         if video_caption_field in request.form:
             new_video_caption = request.form.get(video_caption_field, '').strip()
             new_video_caption = admin_manager.sanitize_text(new_video_caption, max_length=300)
-            subproblem['video']['caption'] = new_video_caption
+            target_obj['video']['caption'] = new_video_caption
 
     # Сохраняем изменения
     if admin_manager.update_manual(manual_id, manual.get('title', ''), manual):
-        flash('Подпроблема успешно обновлена')
+        flash(success_message)
     else:
         flash('Ошибка при сохранении изменений')
 
-    return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+    return redirect(redirect_url)
 
 
 @app.route('/admin/delete-photo', methods=['POST'])
@@ -1508,6 +1767,74 @@ def admin_delete_photo():
         flash('Ошибка при удалении фото')
 
     return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+
+
+@app.route('/admin/delete-step', methods=['POST'])
+@AdminAuth.login_required
+def admin_delete_step():
+    """Удаление всего шага (фото + описание) из подпроблемы"""
+    manual_id = request.form.get('manual_id', '')
+    subproblem_id = request.form.get('subproblem_id', '')
+    step_index_str = request.form.get('step_index', '0')
+
+    # Валидация
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
+
+    # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
+    # if not admin_manager.validate_subproblem_id(subproblem_id):
+    #     flash('Некорректный ID подпроблемы')
+    #     return redirect(url_for('admin_dashboard'))
+
+    try:
+        step_index = int(step_index_str)
+        if step_index < 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        flash('Некорректный индекс шага')
+        return redirect(url_for('admin_dashboard'))
+
+    # Загружаем мануалы
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    # Определяем тип мануала и получаем нужный объект
+    if 'subproblems' in manual:
+        # Мануал с подпроблемами
+        if subproblem_id not in manual['subproblems']:
+            flash('Подпроблема не найдена')
+            return redirect(url_for('admin_dashboard'))
+        target_obj = manual['subproblems'][subproblem_id]
+        redirect_url = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
+    else:
+        # Простой мануал
+        target_obj = manual
+        redirect_url = url_for('admin_edit_simple_manual', manual_id=manual_id)
+
+    if 'photos' not in target_obj or not isinstance(target_obj['photos'], list):
+        flash('Шаги не найдены')
+        return redirect(redirect_url)
+
+    # Проверяем индекс
+    if step_index >= len(target_obj['photos']):
+        flash('Шаг не найден')
+        return redirect(redirect_url)
+
+    # Удаляем шаг
+    del target_obj['photos'][step_index]
+
+    # Сохраняем
+    if admin_manager.save_manuals(manuals):
+        flash(f'Шаг {step_index + 1} успешно удалён')
+    else:
+        flash('Ошибка при удалении шага')
+
+    return redirect(redirect_url)
 
 
 @app.route('/admin/delete-video', methods=['POST'])
@@ -1670,9 +1997,10 @@ def admin_add_new_step():
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    if not admin_manager.validate_subproblem_id(subproblem_id):
-        flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
+    # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
+    # if not admin_manager.validate_subproblem_id(subproblem_id):
+    #     flash('Некорректный ID подпроблемы')
+    #     return redirect(url_for('admin_dashboard'))
 
     caption = admin_manager.sanitize_text(caption, max_length=300)
     if not caption:
@@ -1694,7 +2022,14 @@ def admin_add_new_step():
     else:
         flash('Ошибка при добавлении шага')
 
-    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+    # Редиректим правильно в зависимости от типа мануала
+    manual = admin_manager.get_manual(manual_id)
+    if manual and 'subproblems' in manual:
+        # Мануал с подпроблемами - редирект на страницу редактирования подпроблемы
+        return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+    else:
+        # Простой мануал - редирект на страницу редактирования простого мануала
+        return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
 
 
 @app.route('/admin/upload-video', methods=['GET', 'POST'])
@@ -1710,9 +2045,10 @@ def admin_upload_video():
             flash('Некорректный ID мануала')
             return redirect(url_for('admin_dashboard'))
 
-        if not admin_manager.validate_subproblem_id(subproblem_id):
-            flash('Некорректный ID подпроблемы')
-            return redirect(url_for('admin_dashboard'))
+        # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
+        # if not admin_manager.validate_subproblem_id(subproblem_id):
+        #     flash('Некорректный ID подпроблемы')
+        #     return redirect(url_for('admin_dashboard'))
 
         return render_template('admin_upload_video.html',
                              manual_id=manual_id,
@@ -1728,9 +2064,10 @@ def admin_upload_video():
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    if not admin_manager.validate_subproblem_id(subproblem_id):
-        flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
+    # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
+    # if not admin_manager.validate_subproblem_id(subproblem_id):
+    #     flash('Некорректный ID подпроблемы')
+    #     return redirect(url_for('admin_dashboard'))
 
     # Security Fix: Improved video upload validation
     allowed_video_types = {'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'}
@@ -1788,7 +2125,14 @@ def admin_upload_video():
         traceback.print_exc()
         flash('Ошибка при загрузке файла')
 
-    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+    # Редиректим правильно в зависимости от типа мануала
+    manual = admin_manager.get_manual(manual_id)
+    if manual and 'subproblems' in manual:
+        # Мануал с подпроблемами - редирект на страницу редактирования подпроблемы
+        return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+    else:
+        # Простой мануал - редирект на страницу редактирования простого мануала
+        return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
 
 
 # ============================================
