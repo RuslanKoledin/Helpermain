@@ -30,37 +30,6 @@ class ADAuth:
         self.admin_logins = set(u.strip().lower() for u in admins_str.split(',') if u.strip())
         self.super_admin_logins = set(u.strip().lower() for u in super_admins_str.split(',') if u.strip())
 
-        # Тестовые пользователи для режима разработки
-        self.test_users = {
-            'test': {
-                'password': 'test123',
-                'username': 'test',
-                'display_name': 'Тестовый Пользователь',
-                'email': 'test@mbank.local',
-                'department': 'Отдел тестирования',
-                'title': 'Тестировщик',
-                'role': 'editor'
-            },
-            'admin': {
-                'password': 'admin123',
-                'username': 'admin',
-                'display_name': 'Администратор Системы',
-                'email': 'admin@mbank.local',
-                'department': 'IT отдел',
-                'title': 'Системный администратор',
-                'role': 'super_admin'
-            },
-            'gulsaya': {
-                'password': 'test123',
-                'username': 'gulsaya',
-                'display_name': 'Гулсая Асанова',
-                'email': 'gulsaya@mbank.local',
-                'department': 'Отдел входящей линии',
-                'title': 'Специалист',
-                'role': 'editor'
-            }
-        }
-
     def verify_credentials(self, username: str, password: str) -> Optional[Dict[str, Any]]:
         """
         Проверка учетных данных через Active Directory
@@ -77,40 +46,6 @@ class ADAuth:
 
         # Ограничение длины для безопасности
         if len(username) > 100 or len(password) > 128:
-            return None
-
-        # Режим разработки - используем тестовых пользователей
-        if self.dev_mode:
-            print(f"[DEV MODE] Attempting login for: {username}")
-            # Убираем домен если есть (DOMAIN\username -> username)
-            clean_username = username.split('\\')[-1].lower()
-
-            if clean_username in self.test_users:
-                user = self.test_users[clean_username]
-                if user['password'] == password:
-                    print(f"[DEV MODE] Login successful for: {username}")
-
-                    # Определяем роль (проверка по логину имеет приоритет)
-                    role = user['role']  # По умолчанию из test_users
-                    if clean_username in self.super_admin_logins:
-                        role = 'super_admin'
-                        print(f"[DEV MODE] Role override: super_admin (from AD_SUPER_ADMINS)")
-                    elif clean_username in self.admin_logins:
-                        role = 'admin'
-                        print(f"[DEV MODE] Role override: admin (from AD_ADMINS)")
-
-                    return {
-                        'username': user['username'],
-                        'display_name': user['display_name'],
-                        'email': user['email'],
-                        'department': user['department'],
-                        'title': user['title'],
-                        'role': role
-                    }
-                else:
-                    print(f"[DEV MODE] Wrong password for: {username}")
-            else:
-                print(f"[DEV MODE] User not found: {username}")
             return None
 
         try:
