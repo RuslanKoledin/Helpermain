@@ -538,10 +538,28 @@ class AdminAuth:
             return None
 
         # Ограничение длины для предотвращения DoS
-        if len(username) > 50 or len(password) > 128:
+        if len(username) > 100 or len(password) > 128:
             return None
 
-        # Сначала проверяем в файле admins.json
+        # ПРИОРИТЕТ 1: Проверяем через Active Directory (если настроен)
+        try:
+            from ad_auth import ad_auth
+            if ad_auth.is_configured():
+                ad_result = ad_auth.verify_credentials(username, password)
+                if ad_result:
+                    # Успешная авторизация через AD
+                    return {
+                        'username': ad_result.get('username', username),
+                        'role': ad_result.get('role', ROLE_EDITOR),
+                        'display_name': ad_result.get('display_name', username),
+                        'email': ad_result.get('email', ''),
+                        'auth_method': 'ad'
+                    }
+        except Exception as e:
+            print(f"AD authentication error: {e}")
+            # Продолжаем проверку локальных учетных записей
+
+        # ПРИОРИТЕТ 2: Проверяем в файле admins.json (локальные учетные записи)
         admins_mgr = AdminsManager()
         admin = admins_mgr.get_admin_by_username(username)
 
@@ -550,17 +568,19 @@ class AdminAuth:
             if check_password_hash(password_hash, password):
                 return {
                     'username': username,
-                    'role': admin.get('role', ROLE_EDITOR)
+                    'role': admin.get('role', ROLE_EDITOR),
+                    'auth_method': 'local'
                 }
 
-        # Если не найден в файле, проверяем в переменных окружения (обратная совместимость)
+        # ПРИОРИТЕТ 3: Проверяем в переменных окружения (обратная совместимость)
         env_credentials = AdminAuth._get_admin_credentials_from_env()
         if username in env_credentials:
             hashed = env_credentials[username]['password_hash']
             if check_password_hash(hashed, password):
                 return {
                     'username': username,
-                    'role': env_credentials[username]['role']
+                    'role': env_credentials[username]['role'],
+                    'auth_method': 'env'
                 }
 
         return None

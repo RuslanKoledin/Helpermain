@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Вход в админ-панель</title>
+    <title>Вход - Помощник МБанк</title>
     <style>
         :root {
             --bg: #0c0c0c;
@@ -245,7 +245,7 @@
             cursor: pointer;
         }
 
-        
+
     </style>
 </head>
 <body>
@@ -256,29 +256,27 @@
             </div>
         </div>
 
-        <h2>Вход</h2>
+        <h2>Вход в систему помощи</h2>
         <p class="subtitle">Введите логин и пароль от Windows</p>
 
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                <div class="error-modal" id="error-modal">
-                    <div class="error-card" role="dialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-text">
-                        <div class="error-title" id="error-title">
-                            <span class="error-icon">×</span>
-                            Произошла ошибка
-                        </div>
-                        <div class="error-text" id="error-text">
-                            {{ messages[-1] }}
-                        </div>
-                        <div class="error-actions">
-                            <button type="button" class="error-btn" onclick="closeErrorModal()">Ок</button>
-                        </div>
+        {% if error_message %}
+            <div class="error-modal" id="error-modal">
+                <div class="error-card" role="dialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-text">
+                    <div class="error-title" id="error-title">
+                        <span class="error-icon">×</span>
+                        Произошла ошибка
+                    </div>
+                    <div class="error-text" id="error-text">
+                        {{ error_message }}
+                    </div>
+                    <div class="error-actions">
+                        <button type="button" class="error-btn" onclick="closeErrorModal()">Ок</button>
                     </div>
                 </div>
-            {% endif %}
-        {% endwith %}
+            </div>
+        {% endif %}
 
-        <form method="POST" action="{{ url_for('admin_login') }}">
+        <form method="POST" action="{{ url_for('user_login') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <div class="form-group">

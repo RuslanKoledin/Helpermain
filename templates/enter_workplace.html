@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Укажите рабочее место</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenHover: #009448;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            display: grid;
+            place-items: center;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            width: 420px;
+            max-width: 92vw;
+            border-radius: 14px;
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid #151515;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
+            padding: 24px 26px 26px;
+        }
+
+        .logo-text {
+            display: inline-flex;
+            align-items: center;
+            font-weight: 800;
+            font-size: 34px;
+            letter-spacing: -0.2px;
+            background: linear-gradient(90deg, #00d4aa 0%, #00a651 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 12px;
+        }
+
+        h2 {
+            margin: 8px 0 8px;
+            color: var(--text);
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .user-info {
+            background: rgba(0, 166, 81, 0.08);
+            border: 1px solid rgba(0, 166, 81, 0.2);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin: 16px 0 20px;
+        }
+
+        .user-info-item {
+            color: var(--muted);
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        .user-info-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .user-info-item strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            color: var(--muted);
+            font-size: 13px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            height: 48px;
+            padding: 0 16px;
+            border: 1px solid #2a2a2a;
+            background: #1a1a1a;
+            color: #7a7a7a;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            transition: border .15s ease, background .15s ease, color .15s ease;
+        }
+
+        input::placeholder {
+            color: #6a6a6a;
+        }
+
+        input[type="text"]:focus {
+            border-color: rgba(0, 166, 81, .5);
+            background: #202020;
+            color: var(--text);
+        }
+
+        .btn-continue {
+            margin-top: 20px;
+            width: 100%;
+            height: 48px;
+            border-radius: 10px;
+            border: none;
+            background: var(--green);
+            color: #041a0f;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: transform .06s ease, background .15s ease;
+        }
+
+        .btn-continue:hover {
+            background: var(--greenHover);
+        }
+
+        .btn-continue:active {
+            transform: translateY(1px);
+        }
+
+        .btn-continue:disabled {
+            background: rgba(0, 195, 106, 0.35);
+            color: rgba(6, 17, 11, 0.55);
+            cursor: not-allowed;
+        }
+
+        .hint {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo-text">МБанк</div>
+
+        <h2>Укажите рабочее место</h2>
+
+        <div class="user-info">
+            <div class="user-info-item"><strong>Имя:</strong> {{ user_info.display_name }}</div>
+            {% if user_info.department %}
+            <div class="user-info-item"><strong>Отдел:</strong> {{ user_info.department }}</div>
+            {% endif %}
+        </div>
+
+        <form method="POST" action="{{ url_for('enter_workplace') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="form-group">
+                <label for="workplace">Номер рабочего места</label>
+                <input
+                    type="text"
+                    id="workplace"
+                    name="workplace"
+                    required
+                    maxlength="50"
+                    placeholder="Например: 38"
+                    autocomplete="off"
+                >
+                <p class="hint">Укажите номер вашего рабочего места или компьютера</p>
+            </div>
+
+            <button type="submit" class="btn-continue" id="submit-btn">Продолжить</button>
+        </form>
+    </div>
+
+    <script>
+        const workplaceInput = document.getElementById('workplace');
+        const submitBtn = document.getElementById('submit-btn');
+
+        function validateForm() {
+            const isValid = workplaceInput.value.trim();
+            submitBtn.disabled = !isValid;
+        }
+
+        workplaceInput.addEventListener('input', validateForm);
+        validateForm();
+    </script>
+</body>
+</html>
