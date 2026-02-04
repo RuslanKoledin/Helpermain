@@ -1083,14 +1083,11 @@ def search_topic_api():
 
         # Фильтруем результаты по каналу если он выбран
         if channel:
-            # Умная фильтрация: ищем по словам, а не по полной строке
+            # Точная фильтрация: только тематики из выбранного канала
             filtered_results = []
-            channel_words = set(channel.lower().split())
-
             for r in results:
-                r_channel_words = set(r['channel'].lower().split())
-                # Проверяем, есть ли общие слова
-                if channel_words & r_channel_words:  # пересечение множеств
+                # Точное совпадение названия канала
+                if r['channel'].strip() == channel.strip():
                     filtered_results.append(r)
 
             results = filtered_results
