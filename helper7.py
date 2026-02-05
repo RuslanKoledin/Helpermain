@@ -1788,7 +1788,27 @@ def user_login():
         if len(username) > 100 or len(password) > 128:
             return redirect(url_for('user_login', error='credentials'))
 
-        # Аутентификация через AD
+        # Тестовый режим (без AD) - для локальной разработки
+        # По умолчанию включен если нет AD_SERVER в .env
+        TEST_MODE = os.getenv('TEST_MODE', 'true').lower() == 'true' or not os.getenv('AD_SERVER')
+
+        if TEST_MODE:
+            # Тестовая авторизация: любой логин/пароль где пароль = "test" или "123"
+            if password in ['test', '123', 'password']:
+                session['user_info'] = {
+                    'username': username,
+                    'name': username.title(),
+                    'department': 'Тестовый отдел',
+                    'email': f'{username}@test.local',
+                    'workplace': ''
+                }
+                session['authenticated'] = True
+                session.permanent = True
+                return redirect(url_for('choose_help_type'))
+            else:
+                return redirect(url_for('user_login', error='invalid'))
+
+        # Аутентификация через AD (продакшен)
         from ad_auth import ad_auth
         ad_result = ad_auth.verify_credentials(username, password)
 
