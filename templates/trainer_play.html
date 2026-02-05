@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ scenario.title }} - Тренажер</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenHover: #009448;
+            --greenLight: #00d4aa;
+            --red: #f44336;
+            --orange: #ff9800;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            min-height: 100vh;
+            padding: 24px;
+            color: var(--text);
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        /* Header with progress */
+        .play-header {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+        }
+
+        .play-header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .scenario-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .score-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(0, 166, 81, 0.1);
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--greenLight);
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        .progress-bar-container {
+            background: var(--border);
+            border-radius: 6px;
+            height: 6px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, var(--green), var(--greenLight));
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.3s ease;
+        }
+
+        /* Dialog Area */
+        .dialog-area {
+            margin-bottom: 24px;
+        }
+
+        .client-message {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            animation: slideIn 0.4s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .client-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .client-bubble {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            border-top-left-radius: 4px;
+            padding: 16px 20px;
+            max-width: 85%;
+        }
+
+        .client-name {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .client-text {
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        /* Answer Options */
+        .answers-section {
+            margin-bottom: 24px;
+        }
+
+        .answers-title {
+            font-size: 14px;
+            color: var(--muted);
+            margin-bottom: 14px;
+        }
+
+        .answers-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .answer-option {
+            background: var(--card);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: left;
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--text);
+        }
+
+        .answer-option:hover:not(.disabled) {
+            border-color: var(--green);
+            background: rgba(0, 166, 81, 0.05);
+        }
+
+        .answer-option.selected {
+            border-color: var(--green);
+            background: rgba(0, 166, 81, 0.1);
+        }
+
+        .answer-option.correct {
+            border-color: var(--green);
+            background: rgba(0, 166, 81, 0.15);
+        }
+
+        .answer-option.partial {
+            border-color: var(--orange);
+            background: rgba(255, 152, 0, 0.15);
+        }
+
+        .answer-option.wrong {
+            border-color: var(--red);
+            background: rgba(244, 67, 54, 0.15);
+        }
+
+        .answer-option.disabled {
+            cursor: default;
+            opacity: 0.7;
+        }
+
+        /* Feedback */
+        .feedback-box {
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease;
+            display: none;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .feedback-box.show {
+            display: block;
+        }
+
+        .feedback-box.correct {
+            background: rgba(0, 166, 81, 0.1);
+            border: 1px solid rgba(0, 166, 81, 0.3);
+        }
+
+        .feedback-box.partial {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+        }
+
+        .feedback-box.wrong {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .feedback-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .feedback-box.correct .feedback-header { color: var(--greenLight); }
+        .feedback-box.partial .feedback-header { color: var(--orange); }
+        .feedback-box.wrong .feedback-header { color: var(--red); }
+
+        .feedback-text {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .points-earned {
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--greenLight);
+        }
+
+        /* Action Button */
+        .action-btn {
+            width: 100%;
+            padding: 16px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: linear-gradient(135deg, var(--green), var(--greenHover));
+            color: white;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 166, 81, 0.3);
+        }
+
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .action-btn.secondary {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .action-btn.secondary:hover {
+            background: var(--card2);
+            box-shadow: none;
+        }
+
+        /* Exit link */
+        .exit-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: var(--muted);
+            font-size: 13px;
+            text-decoration: none;
+        }
+
+        .exit-link:hover {
+            color: var(--text);
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--muted);
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 16px;
+            }
+
+            .client-bubble {
+                max-width: 100%;
+            }
+
+            .answer-option {
+                padding: 14px 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="play-header">
+            <div class="play-header-top">
+                <div class="scenario-title">{{ scenario.title }}</div>
+                <div class="score-display">
+                    <span>💎</span>
+                    <span id="current-score">0</span>/<span id="max-score">{{ scenario.total_points }}</span>
+                </div>
+            </div>
+            <div class="progress-info">
+                <span>Вопрос <span id="current-step">1</span> из <span id="total-steps">{{ total_steps }}</span></span>
+                <span id="step-percent">0%</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Dialog Area -->
+        <div class="dialog-area" id="dialog-area">
+            <div class="loading" id="loading">
+                <div class="loading-spinner"></div>
+                <p>Загрузка...</p>
+            </div>
+        </div>
+
+        <!-- Answers Section -->
+        <div class="answers-section" id="answers-section" style="display: none;">
+            <div class="answers-title">Выберите ваш ответ:</div>
+            <div class="answers-list" id="answers-list"></div>
+        </div>
+
+        <!-- Feedback -->
+        <div class="feedback-box" id="feedback-box">
+            <div class="feedback-header">
+                <span id="feedback-icon"></span>
+                <span id="feedback-title"></span>
+            </div>
+            <div class="feedback-text" id="feedback-text"></div>
+            <div class="points-earned" id="points-earned"></div>
+        </div>
+
+        <!-- Action Button -->
+        <button class="action-btn" id="action-btn" style="display: none;">Далее</button>
+
+        <a href="{{ url_for('trainer_level', level_code=scenario.level_code) }}" class="exit-link">
+            Выйти из сценария
+        </a>
+    </div>
+
+    <script>
+        const scenarioId = {{ scenario.id }};
+        const totalSteps = {{ total_steps }};
+        const maxScore = {{ scenario.total_points }};
+        const csrfToken = '{{ csrf_token() }}';
+
+        let currentStep = 0;
+        let currentScore = 0;
+        let answersHistory = [];
+        let selectedAnswer = null;
+        let answerSubmitted = false;
+
+        // Elements
+        const dialogArea = document.getElementById('dialog-area');
+        const answersSection = document.getElementById('answers-section');
+        const answersList = document.getElementById('answers-list');
+        const feedbackBox = document.getElementById('feedback-box');
+        const actionBtn = document.getElementById('action-btn');
+        const loadingEl = document.getElementById('loading');
+
+        // Initialize
+        loadStep(1);
+
+        async function loadStep(stepNum) {
+            loadingEl.style.display = 'block';
+            answersSection.style.display = 'none';
+            actionBtn.style.display = 'none';
+            feedbackBox.classList.remove('show');
+
+            try {
+                const response = await fetch(`/api/trainer/step/${scenarioId}/${stepNum}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    currentStep = stepNum;
+                    renderStep(data.step);
+                    updateProgress();
+                } else {
+                    showError(data.error || 'Ошибка загрузки шага');
+                }
+            } catch (error) {
+                showError('Ошибка соединения');
+            }
+        }
+
+        function renderStep(step) {
+            loadingEl.style.display = 'none';
+
+            // Client message
+            dialogArea.innerHTML = `
+                <div class="client-message">
+                    <div class="client-avatar">${step.client_avatar || '👤'}</div>
+                    <div class="client-bubble">
+                        <div class="client-name">${step.client_name || 'Клиент'}</div>
+                        <div class="client-text">${escapeHtml(step.client_message)}</div>
+                    </div>
+                </div>
+            `;
+
+            // Answers
+            answersList.innerHTML = '';
+            step.answers.forEach((answer, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'answer-option';
+                btn.textContent = answer.answer_text;
+                btn.dataset.answerId = answer.id;
+                btn.dataset.index = index;
+                btn.onclick = () => selectAnswer(btn, answer);
+                answersList.appendChild(btn);
+            });
+
+            answersSection.style.display = 'block';
+            selectedAnswer = null;
+            answerSubmitted = false;
+        }
+
+        function selectAnswer(btn, answer) {
+            if (answerSubmitted) return;
+
+            // Remove selection from all
+            document.querySelectorAll('.answer-option').forEach(el => {
+                el.classList.remove('selected');
+            });
+
+            // Select current
+            btn.classList.add('selected');
+            selectedAnswer = answer;
+
+            // Show submit button
+            actionBtn.style.display = 'block';
+            actionBtn.textContent = 'Подтвердить ответ';
+            actionBtn.onclick = submitAnswer;
+        }
+
+        async function submitAnswer() {
+            if (!selectedAnswer || answerSubmitted) return;
+
+            answerSubmitted = true;
+            actionBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/trainer/answer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        scenario_id: scenarioId,
+                        step_num: currentStep,
+                        answer_id: selectedAnswer.id
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showFeedback(data);
+                    currentScore += data.points_earned;
+                    updateScore();
+
+                    // Save to history
+                    answersHistory.push({
+                        step_num: currentStep,
+                        answer_id: selectedAnswer.id,
+                        points: data.points_earned,
+                        is_correct: data.is_correct
+                    });
+
+                    // Highlight answers
+                    highlightAnswers(data);
+
+                    // Update button
+                    if (currentStep < totalSteps) {
+                        actionBtn.textContent = 'Следующий вопрос';
+                        actionBtn.onclick = () => loadStep(currentStep + 1);
+                    } else {
+                        actionBtn.textContent = 'Завершить сценарий';
+                        actionBtn.onclick = completeScenario;
+                    }
+                    actionBtn.disabled = false;
+                } else {
+                    showError(data.error || 'Ошибка отправки ответа');
+                    answerSubmitted = false;
+                    actionBtn.disabled = false;
+                }
+            } catch (error) {
+                showError('Ошибка соединения');
+                answerSubmitted = false;
+                actionBtn.disabled = false;
+            }
+        }
+
+        function showFeedback(data) {
+            const feedbackIcon = document.getElementById('feedback-icon');
+            const feedbackTitle = document.getElementById('feedback-title');
+            const feedbackText = document.getElementById('feedback-text');
+            const pointsEarned = document.getElementById('points-earned');
+
+            feedbackBox.classList.remove('correct', 'partial', 'wrong');
+
+            if (data.is_correct) {
+                feedbackBox.classList.add('correct');
+                feedbackIcon.textContent = '✅';
+                feedbackTitle.textContent = 'Отличный ответ!';
+            } else if (data.is_partial) {
+                feedbackBox.classList.add('partial');
+                feedbackIcon.textContent = '⚠️';
+                feedbackTitle.textContent = 'Частично верно';
+            } else {
+                feedbackBox.classList.add('wrong');
+                feedbackIcon.textContent = '❌';
+                feedbackTitle.textContent = 'Неверный ответ';
+            }
+
+            feedbackText.textContent = data.feedback || '';
+            pointsEarned.textContent = data.points_earned > 0 ? `+${data.points_earned} баллов` : '';
+
+            feedbackBox.classList.add('show');
+        }
+
+        function highlightAnswers(data) {
+            document.querySelectorAll('.answer-option').forEach(btn => {
+                btn.classList.add('disabled');
+
+                if (parseInt(btn.dataset.answerId) === selectedAnswer.id) {
+                    if (data.is_correct) {
+                        btn.classList.add('correct');
+                    } else if (data.is_partial) {
+                        btn.classList.add('partial');
+                    } else {
+                        btn.classList.add('wrong');
+                    }
+                }
+            });
+        }
+
+        async function completeScenario() {
+            actionBtn.disabled = true;
+            actionBtn.textContent = 'Сохранение...';
+
+            try {
+                const response = await fetch('/api/trainer/complete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        scenario_id: scenarioId,
+                        score: currentScore,
+                        max_score: maxScore,
+                        answers: answersHistory
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    window.location.href = `/trainer/results/${data.result_id}`;
+                } else {
+                    showError(data.error || 'Ошибка сохранения результата');
+                    actionBtn.disabled = false;
+                    actionBtn.textContent = 'Попробовать снова';
+                }
+            } catch (error) {
+                showError('Ошибка соединения');
+                actionBtn.disabled = false;
+                actionBtn.textContent = 'Попробовать снова';
+            }
+        }
+
+        function updateProgress() {
+            const percent = Math.round((currentStep / totalSteps) * 100);
+            document.getElementById('current-step').textContent = currentStep;
+            document.getElementById('step-percent').textContent = percent + '%';
+            document.getElementById('progress-bar').style.width = percent + '%';
+        }
+
+        function updateScore() {
+            document.getElementById('current-score').textContent = currentScore;
+        }
+
+        function showError(message) {
+            dialogArea.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: var(--red);">
+                    <p>⚠️ ${escapeHtml(message)}</p>
+                    <button class="action-btn secondary" style="margin-top: 20px; width: auto;"
+                            onclick="location.reload()">Попробовать снова</button>
+                </div>
+            `;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

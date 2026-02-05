@@ -21,6 +21,7 @@ from flask_wtf.csrf import CSRFProtect
 from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES
 from topics_manager import TopicsManager
 from stats_manager import StatsManager
+from trainer_manager import TrainerManager
 
 # ============================================
 # RATE LIMITING
@@ -169,6 +170,9 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 # Инициализация TopicsManager
 tm = TopicsManager("topics.db")
+
+# Инициализация TrainerManager
+trainer_mgr = TrainerManager("topics.db")
 
 # TODO: СТАТИСТИКА В РАЗРАБОТКЕ
 # Инициализация StatsManager для сбора аналитики
@@ -1204,6 +1208,554 @@ def handle_channel_messages(message):
             print("❌ Не прошли проверки (нет reply_to_message или ID не в SUPPORT_STAFF_IDS)")
     except Exception as e:
         print(f"Ошибка при обработке сообщения в канале: {e}")
+
+# ============================================
+# ТРЕНАЖЕР ОПЕРАТОРОВ
+# ============================================
+
+@app.route('/trainer')
+def trainer_menu():
+    """Главная страница тренажера с уровнями"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    user_id = session['user_info'].get('username', 'anonymous')
+    levels = trainer_mgr.get_all_levels()
+    progress = trainer_mgr.get_user_progress(user_id)
+
+    return render_template('trainer_menu.html', levels=levels, progress=progress)
+
+
+@app.route('/trainer/level/<level_code>')
+def trainer_level(level_code):
+    """Список сценариев уровня"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    user_id = session['user_info'].get('username', 'anonymous')
+    level = trainer_mgr.get_level_by_code(level_code)
+
+    if not level:
+        flash('Уровень не найден')
+        return redirect(url_for('trainer_menu'))
+
+    # Проверяем доступ к уровню
+    if not trainer_mgr.check_level_unlocked(user_id, level_code):
+        flash('Этот уровень ещё заблокирован')
+        return redirect(url_for('trainer_menu'))
+
+    # Получаем фильтр по категории
+    category_id = request.args.get('category', type=int)
+
+    scenarios = trainer_mgr.get_scenarios_by_level(level_code, category_id)
+    categories = trainer_mgr.get_all_categories()
+
+    # Получаем результаты пользователя для каждого сценария
+    user_results = {}
+    for scenario in scenarios:
+        result = trainer_mgr.get_scenario_user_result(user_id, scenario['id'])
+        if result:
+            user_results[scenario['id']] = result
+
+    # Считаем статистику уровня
+    completed_count = len(user_results)
+    total_count = len(scenarios)
+    avg_percent = 0
+    if user_results:
+        avg_percent = round(sum(r['percent'] for r in user_results.values()) / len(user_results), 1)
+
+    return render_template('trainer_scenarios.html',
+                         level=level,
+                         scenarios=scenarios,
+                         categories=categories,
+                         current_category=category_id,
+                         user_results=user_results,
+                         completed_count=completed_count,
+                         total_count=total_count,
+                         avg_percent=avg_percent)
+
+
+@app.route('/trainer/play/<int:scenario_id>')
+def trainer_play(scenario_id):
+    """Страница прохождения сценария"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    user_id = session['user_info'].get('username', 'anonymous')
+    scenario = trainer_mgr.get_scenario(scenario_id)
+
+    if not scenario:
+        flash('Сценарий не найден')
+        return redirect(url_for('trainer_menu'))
+
+    # Проверяем доступ к уровню
+    if not trainer_mgr.check_level_unlocked(user_id, scenario['level_code']):
+        flash('Этот уровень ещё заблокирован')
+        return redirect(url_for('trainer_menu'))
+
+    total_steps = trainer_mgr.get_steps_count(scenario_id)
+
+    if total_steps == 0:
+        flash('В этом сценарии пока нет шагов')
+        return redirect(url_for('trainer_level', level_code=scenario['level_code']))
+
+    return render_template('trainer_play.html',
+                         scenario=scenario,
+                         total_steps=total_steps)
+
+
+@app.route('/api/trainer/step/<int:scenario_id>/<int:step_num>')
+@rate_limit(max_requests=120, window=60)
+def trainer_get_step(scenario_id, step_num):
+    """API: получить шаг сценария"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    step = trainer_mgr.get_step_by_num(scenario_id, step_num)
+
+    if not step:
+        return jsonify({'success': False, 'error': 'Шаг не найден'})
+
+    # Не отправляем информацию о правильности ответов
+    safe_answers = []
+    for answer in step.get('answers', []):
+        safe_answers.append({
+            'id': answer['id'],
+            'answer_text': answer['answer_text'],
+            'order_num': answer['order_num']
+        })
+
+    return jsonify({
+        'success': True,
+        'step': {
+            'id': step['id'],
+            'step_num': step['step_num'],
+            'client_message': step['client_message'],
+            'client_avatar': step['client_avatar'],
+            'client_name': step['client_name'],
+            'answers': safe_answers
+        }
+    })
+
+
+@app.route('/api/trainer/answer', methods=['POST'])
+@rate_limit(max_requests=60, window=60)
+def trainer_submit_answer():
+    """API: отправить ответ"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    try:
+        data = request.get_json()
+        scenario_id = data.get('scenario_id')
+        step_num = data.get('step_num')
+        answer_id = data.get('answer_id')
+
+        if not all([scenario_id, step_num, answer_id]):
+            return jsonify({'success': False, 'error': 'Неполные данные'})
+
+        # Получаем шаг и ответы
+        step = trainer_mgr.get_step_by_num(scenario_id, step_num)
+        if not step:
+            return jsonify({'success': False, 'error': 'Шаг не найден'})
+
+        # Находим выбранный ответ
+        selected_answer = None
+        for answer in step.get('answers', []):
+            if answer['id'] == answer_id:
+                selected_answer = answer
+                break
+
+        if not selected_answer:
+            return jsonify({'success': False, 'error': 'Ответ не найден'})
+
+        return jsonify({
+            'success': True,
+            'is_correct': bool(selected_answer['is_correct']),
+            'is_partial': bool(selected_answer['is_partial']),
+            'points_earned': selected_answer['points'],
+            'feedback': selected_answer['feedback'] or ''
+        })
+
+    except Exception as e:
+        print(f"[trainer_submit_answer] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
+
+
+@app.route('/api/trainer/complete', methods=['POST'])
+@rate_limit(max_requests=30, window=60)
+def trainer_complete():
+    """API: завершить сценарий"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    try:
+        data = request.get_json()
+        scenario_id = data.get('scenario_id')
+        score = data.get('score', 0)
+        max_score = data.get('max_score', 100)
+        answers = data.get('answers', [])
+
+        if not scenario_id:
+            return jsonify({'success': False, 'error': 'Не указан сценарий'})
+
+        user_id = session['user_info'].get('username', 'anonymous')
+
+        # Сохраняем результат
+        result = trainer_mgr.save_result(user_id, scenario_id, score, max_score, answers)
+
+        return jsonify({
+            'success': True,
+            'result_id': result['id'],
+            'percent': result['percent'],
+            'grade': result['grade']
+        })
+
+    except Exception as e:
+        print(f"[trainer_complete] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
+
+
+@app.route('/trainer/results/<int:result_id>')
+def trainer_results(result_id):
+    """Страница результатов прохождения"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    result = trainer_mgr.get_result_by_id(result_id)
+
+    if not result:
+        flash('Результат не найден')
+        return redirect(url_for('trainer_menu'))
+
+    # Проверяем что это результат текущего пользователя
+    user_id = session['user_info'].get('username', 'anonymous')
+    if result['user_id'] != user_id:
+        flash('Доступ запрещен')
+        return redirect(url_for('trainer_menu'))
+
+    grade_info = trainer_mgr.get_grade_info(result['grade'])
+
+    # Получаем детализацию ответов
+    answers_detail = []
+    if result.get('answers'):
+        for ans in result['answers']:
+            step = trainer_mgr.get_step_by_num(result['scenario_id'], ans['step_num'])
+            if step:
+                for answer in step.get('answers', []):
+                    if answer['id'] == ans['answer_id']:
+                        answers_detail.append({
+                            'step_num': ans['step_num'],
+                            'answer_text': answer['answer_text'],
+                            'points': ans['points'],
+                            'is_correct': ans['is_correct'],
+                            'is_partial': answer.get('is_partial', False)
+                        })
+                        break
+
+    # Находим следующий сценарий
+    scenarios = trainer_mgr.get_scenarios_by_level(result['level_code'])
+    next_scenario = None
+    found_current = False
+    for s in scenarios:
+        if found_current:
+            next_scenario = s
+            break
+        if s['id'] == result['scenario_id']:
+            found_current = True
+
+    return render_template('trainer_results.html',
+                         result=result,
+                         grade_info=grade_info,
+                         answers_detail=answers_detail,
+                         next_scenario=next_scenario)
+
+
+# ============================================
+# АДМИН-ПАНЕЛЬ ТРЕНАЖЕРА
+# ============================================
+
+@app.route('/admin/trainer')
+@AdminAuth.login_required
+def admin_trainer():
+    """Админка: список сценариев тренажера"""
+    stats = trainer_mgr.get_statistics()
+    levels = trainer_mgr.get_all_levels()
+    categories = trainer_mgr.get_all_categories()
+
+    # Фильтры
+    level_code = request.args.get('level')
+    category_id = request.args.get('category', type=int)
+
+    scenarios = trainer_mgr.get_all_scenarios(include_inactive=True)
+
+    # Применяем фильтры
+    if level_code:
+        scenarios = [s for s in scenarios if s['level_code'] == level_code]
+    if category_id:
+        scenarios = [s for s in scenarios if s['category_id'] == category_id]
+
+    # Добавляем количество шагов
+    for scenario in scenarios:
+        scenario['steps_count'] = trainer_mgr.get_steps_count(scenario['id'])
+
+    return render_template('admin_trainer.html',
+                         stats=stats,
+                         levels=levels,
+                         categories=categories,
+                         scenarios=scenarios,
+                         current_level=level_code,
+                         current_category=category_id)
+
+
+@app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_trainer_create():
+    """Создание нового сценария"""
+    levels = trainer_mgr.get_all_levels()
+    categories = trainer_mgr.get_all_categories()
+
+    if request.method == 'POST':
+        data = {
+            'level_id': request.form.get('level_id', type=int),
+            'category_id': request.form.get('category_id', type=int) or None,
+            'title': request.form.get('title', '').strip(),
+            'description': request.form.get('description', '').strip(),
+            'estimated_time': request.form.get('estimated_time', 5, type=int),
+            'total_points': request.form.get('total_points', 100, type=int),
+            'is_active': 1 if request.form.get('is_active') else 0,
+            'order_num': request.form.get('order_num', 0, type=int)
+        }
+
+        if not data['title']:
+            flash('Название обязательно')
+            return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[])
+
+        result = trainer_mgr.create_scenario(data)
+
+        if result['success']:
+            flash('Сценарий успешно создан!')
+            return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
+        else:
+            flash(f'Ошибка: {result.get("error")}')
+
+    return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[])
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/edit', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_trainer_edit(scenario_id):
+    """Редактирование сценария"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+
+    if not scenario:
+        flash('Сценарий не найден')
+        return redirect(url_for('admin_trainer'))
+
+    levels = trainer_mgr.get_all_levels()
+    categories = trainer_mgr.get_all_categories()
+
+    if request.method == 'POST':
+        # Обновляем основную информацию сценария
+        data = {
+            'level_id': request.form.get('level_id', type=int),
+            'category_id': request.form.get('category_id', type=int) or None,
+            'title': request.form.get('title', '').strip(),
+            'description': request.form.get('description', '').strip(),
+            'estimated_time': request.form.get('estimated_time', 5, type=int),
+            'total_points': request.form.get('total_points', 100, type=int),
+            'is_active': 1 if request.form.get('is_active') else 0,
+            'order_num': request.form.get('order_num', 0, type=int)
+        }
+
+        result = trainer_mgr.update_scenario(scenario_id, data)
+
+        if result['success']:
+            # Обновляем шаги и ответы
+            for key in request.form:
+                # Обновление шагов
+                if key.startswith('step_') and key.endswith('_message'):
+                    step_id = int(key.split('_')[1])
+                    trainer_mgr.update_step(step_id, {
+                        'client_message': request.form.get(key, '').strip(),
+                        'client_avatar': request.form.get(f'step_{step_id}_avatar', '👤'),
+                        'client_name': request.form.get(f'step_{step_id}_name', 'Клиент')
+                    })
+
+                # Обновление ответов
+                if key.startswith('answer_') and key.endswith('_text'):
+                    answer_id = int(key.split('_')[1])
+                    trainer_mgr.update_answer(answer_id, {
+                        'answer_text': request.form.get(key, '').strip(),
+                        'is_correct': 1 if request.form.get(f'answer_{answer_id}_correct') else 0,
+                        'is_partial': 1 if request.form.get(f'answer_{answer_id}_partial') else 0,
+                        'points': request.form.get(f'answer_{answer_id}_points', 0, type=int),
+                        'feedback': request.form.get(f'answer_{answer_id}_feedback', '').strip()
+                    })
+
+            flash('Сценарий успешно обновлен!')
+        else:
+            flash(f'Ошибка: {result.get("error")}')
+
+        # Перезагружаем данные
+        scenario = trainer_mgr.get_scenario(scenario_id)
+
+    # Получаем шаги с ответами
+    steps = trainer_mgr.get_scenario_steps(scenario_id)
+    for step in steps:
+        step['answers'] = trainer_mgr.get_step_answers(step['id'])
+
+    return render_template('admin_trainer_edit.html',
+                         scenario=scenario,
+                         levels=levels,
+                         categories=categories,
+                         steps=steps)
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_delete(scenario_id):
+    """Удаление сценария"""
+    result = trainer_mgr.delete_scenario(scenario_id)
+
+    if result['success']:
+        flash('Сценарий удален')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/step/create', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_create_step(scenario_id):
+    """Создание шага сценария"""
+    data = {
+        'client_message': request.form.get('client_message', 'Сообщение клиента'),
+        'client_avatar': request.form.get('client_avatar', '👤'),
+        'client_name': request.form.get('client_name', 'Клиент')
+    }
+
+    result = trainer_mgr.create_step(scenario_id, data)
+
+    if result['success']:
+        flash('Шаг добавлен')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id))
+
+
+@app.route('/admin/trainer/step/<int:step_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_delete_step(step_id):
+    """Удаление шага"""
+    result = trainer_mgr.delete_step(step_id)
+
+    if result['success']:
+        flash('Шаг удален')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(request.referrer or url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/step/<int:step_id>/answer/create', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_create_answer(step_id):
+    """Создание варианта ответа"""
+    data = {
+        'answer_text': request.form.get('answer_text', 'Новый ответ'),
+        'is_correct': 0,
+        'is_partial': 0,
+        'points': request.form.get('points', 0, type=int),
+        'feedback': ''
+    }
+
+    result = trainer_mgr.create_answer(step_id, data)
+
+    if result['success']:
+        flash('Ответ добавлен')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(request.referrer or url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/answer/<int:answer_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_delete_answer(answer_id):
+    """Удаление варианта ответа"""
+    result = trainer_mgr.delete_answer(answer_id)
+
+    if result['success']:
+        flash('Ответ удален')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(request.referrer or url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/stats')
+@AdminAuth.login_required
+def admin_trainer_stats():
+    """Статистика тренажера"""
+    stats = trainer_mgr.get_statistics()
+    return render_template('admin_trainer_stats.html', stats=stats)
+
+
+@app.route('/admin/trainer/export')
+@AdminAuth.login_required
+def admin_trainer_export():
+    """Экспорт статистики в Excel"""
+    try:
+        import tempfile
+        from flask import send_file
+        from datetime import datetime
+        import pandas as pd
+
+        stats = trainer_mgr.get_statistics()
+
+        # Создаем Excel файл
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        tmp_path = tmp_file.name
+        tmp_file.close()
+
+        with pd.ExcelWriter(tmp_path, engine='openpyxl') as writer:
+            # Общая статистика
+            general_df = pd.DataFrame([{
+                'Всего сценариев': stats['total_scenarios'],
+                'Всего прохождений': stats['total_completions'],
+                'Уникальных пользователей': stats['unique_users'],
+                'Средний балл': stats['avg_score']
+            }])
+            general_df.to_excel(writer, sheet_name='Общая', index=False)
+
+            # Статистика по уровням
+            levels_df = pd.DataFrame(stats['levels'])
+            levels_df.to_excel(writer, sheet_name='По уровням', index=False)
+
+            # Топ пользователей
+            if stats['top_users']:
+                users_df = pd.DataFrame(stats['top_users'])
+                users_df.columns = ['Пользователь', 'Прохождений', 'Средний балл']
+                users_df.to_excel(writer, sheet_name='Рейтинг', index=False)
+
+        return send_file(
+            tmp_path,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'trainer_stats_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+
+    except Exception as e:
+        print(f"[admin_trainer_export] Ошибка: {e}")
+        traceback.print_exc()
+        flash('Ошибка экспорта')
+        return redirect(url_for('admin_trainer_stats'))
+
 
 # ============================================
 # АДМИН-ПАНЕЛЬ

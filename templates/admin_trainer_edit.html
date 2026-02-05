@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if scenario %}Редактирование{% else %}Создание{% endif %} сценария - Админ-панель</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        h1 {
+            color: #007b7e;
+            font-size: 24px;
+        }
+
+        h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Form Styles */
+        .form-section {
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #007b7e;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 20px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+
+        /* Steps Section */
+        .steps-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #e9ecef;
+        }
+
+        .step-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .step-number {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            color: #007b7e;
+        }
+
+        .step-number span {
+            width: 30px;
+            height: 30px;
+            background: #007b7e;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .step-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .client-message-input {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .client-message-input textarea {
+            width: 100%;
+            border: none;
+            resize: vertical;
+            min-height: 60px;
+            font-size: 14px;
+        }
+
+        .client-message-input textarea:focus {
+            outline: none;
+        }
+
+        .client-info {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        .client-info input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .client-info input:first-child {
+            width: 60px;
+        }
+
+        .client-info input:last-child {
+            flex: 1;
+        }
+
+        /* Answers */
+        .answers-list {
+            margin-top: 15px;
+        }
+
+        .answer-item {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .answer-item textarea {
+            flex: 1;
+            border: none;
+            resize: vertical;
+            min-height: 40px;
+            font-size: 14px;
+        }
+
+        .answer-item textarea:focus {
+            outline: none;
+        }
+
+        .answer-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 120px;
+        }
+
+        .answer-options label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .answer-options input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+        }
+
+        .answer-options input[type="number"] {
+            width: 60px;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .answer-feedback {
+            flex: 1;
+        }
+
+        .answer-feedback input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .add-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: #e8f5e9;
+            border: 1px dashed #4caf50;
+            border-radius: 6px;
+            color: #4caf50;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .add-btn:hover {
+            background: #c8e6c9;
+        }
+
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .back-link {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            font-size: 14px;
+            text-decoration: none;
+            color: #ffffff;
+            font-weight: 600;
+            background: rgba(255, 165, 0, 0.3);
+            backdrop-filter: blur(10px);
+            padding: 8px 16px;
+            border: 2px solid rgba(255, 165, 0, 0.5);
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .back-link:hover {
+            background: rgba(255, 165, 0, 0.5);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <a href="{{ url_for('admin_trainer') }}" class="back-link">
+        &larr; К списку сценариев
+    </a>
+
+    <div class="container">
+        <div class="header">
+            <h1>{% if scenario %}✏️ Редактирование сценария{% else %}➕ Создание сценария{% endif %}</h1>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-success">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" id="scenarioForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <!-- Basic Info Section -->
+            <div class="form-section">
+                <h2>Основная информация</h2>
+
+                <div class="form-group">
+                    <label for="title">Название сценария *</label>
+                    <input type="text" id="title" name="title" required
+                           value="{{ scenario.title if scenario else '' }}"
+                           placeholder="Например: Клиент не может войти в личный кабинет">
+                </div>
+
+                <div class="form-group">
+                    <label for="description">Описание</label>
+                    <textarea id="description" name="description"
+                              placeholder="Краткое описание ситуации...">{{ scenario.description if scenario else '' }}</textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="level_id">Уровень сложности *</label>
+                        <select id="level_id" name="level_id" required>
+                            {% for level in levels %}
+                            <option value="{{ level.id }}"
+                                    {% if scenario and scenario.level_id == level.id %}selected{% endif %}>
+                                {{ level.icon }} {{ level.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="category_id">Категория</label>
+                        <select id="category_id" name="category_id">
+                            <option value="">— Без категории —</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}"
+                                    {% if scenario and scenario.category_id == category.id %}selected{% endif %}>
+                                {{ category.icon }} {{ category.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="estimated_time">Время прохождения (мин)</label>
+                        <input type="number" id="estimated_time" name="estimated_time" min="1" max="60"
+                               value="{{ scenario.estimated_time if scenario else 5 }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="total_points">Максимум баллов</label>
+                        <input type="number" id="total_points" name="total_points" min="10" max="1000"
+                               value="{{ scenario.total_points if scenario else 100 }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="order_num">Порядок сортировки</label>
+                        <input type="number" id="order_num" name="order_num" min="0"
+                               value="{{ scenario.order_num if scenario else 0 }}">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="is_active" name="is_active"
+                               {% if not scenario or scenario.is_active %}checked{% endif %}>
+                        <label for="is_active">Сценарий активен (виден пользователям)</label>
+                    </div>
+                </div>
+            </div>
+
+            {% if scenario %}
+            <!-- Steps Section (only for existing scenarios) -->
+            <div class="steps-section">
+                <h2>Шаги сценария (диалог)</h2>
+
+                <div id="steps-container">
+                    {% for step in steps %}
+                    <div class="step-card" data-step-id="{{ step.id }}">
+                        <div class="step-header">
+                            <div class="step-number">
+                                <span>{{ loop.index }}</span>
+                                Шаг {{ loop.index }}
+                            </div>
+                            <div class="step-actions">
+                                <button type="button" class="btn btn-danger btn-sm" onclick="deleteStep({{ step.id }})">Удалить шаг</button>
+                            </div>
+                        </div>
+
+                        <div class="client-message-input">
+                            <div class="client-info">
+                                <input type="text" name="step_{{ step.id }}_avatar" value="{{ step.client_avatar or '👤' }}" placeholder="Аватар">
+                                <input type="text" name="step_{{ step.id }}_name" value="{{ step.client_name or 'Клиент' }}" placeholder="Имя клиента">
+                            </div>
+                            <textarea name="step_{{ step.id }}_message" placeholder="Сообщение клиента...">{{ step.client_message }}</textarea>
+                        </div>
+
+                        <div class="answers-list">
+                            <strong style="font-size: 13px; color: #666; display: block; margin-bottom: 10px;">Варианты ответов:</strong>
+
+                            {% for answer in step.answers %}
+                            <div class="answer-item" data-answer-id="{{ answer.id }}">
+                                <textarea name="answer_{{ answer.id }}_text" placeholder="Текст ответа...">{{ answer.answer_text }}</textarea>
+                                <div class="answer-options">
+                                    <label>
+                                        <input type="checkbox" name="answer_{{ answer.id }}_correct"
+                                               {% if answer.is_correct %}checked{% endif %}>
+                                        Правильный
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" name="answer_{{ answer.id }}_partial"
+                                               {% if answer.is_partial %}checked{% endif %}>
+                                        Частично
+                                    </label>
+                                    <label>
+                                        Баллы:
+                                        <input type="number" name="answer_{{ answer.id }}_points" min="0" max="100"
+                                               value="{{ answer.points }}">
+                                    </label>
+                                </div>
+                                <div class="answer-feedback">
+                                    <input type="text" name="answer_{{ answer.id }}_feedback"
+                                           value="{{ answer.feedback or '' }}" placeholder="Обратная связь...">
+                                </div>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="deleteAnswer({{ answer.id }})">✕</button>
+                            </div>
+                            {% endfor %}
+
+                            <button type="button" class="add-btn" onclick="addAnswer({{ step.id }})">
+                                + Добавить вариант ответа
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <button type="button" class="add-btn" onclick="addStep()" style="margin-top: 15px;">
+                    + Добавить шаг диалога
+                </button>
+            </div>
+            {% endif %}
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-success">
+                    {% if scenario %}Сохранить изменения{% else %}Создать сценарий{% endif %}
+                </button>
+                <a href="{{ url_for('admin_trainer') }}" class="btn btn-secondary">Отмена</a>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const csrfToken = '{{ csrf_token() }}';
+        const scenarioId = {{ scenario.id if scenario else 'null' }};
+
+        async function addStep() {
+            if (!scenarioId) {
+                alert('Сначала сохраните сценарий');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+            formData.append('client_message', 'Новое сообщение клиента');
+            formData.append('client_avatar', '👤');
+            formData.append('client_name', 'Клиент');
+
+            try {
+                const response = await fetch(`/admin/trainer/scenario/${scenarioId}/step/create`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('Ошибка при добавлении шага');
+                }
+            } catch (error) {
+                alert('Ошибка соединения');
+            }
+        }
+
+        async function deleteStep(stepId) {
+            if (!confirm('Удалить этот шаг и все его варианты ответов?')) return;
+
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+
+            try {
+                const response = await fetch(`/admin/trainer/step/${stepId}/delete`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('Ошибка при удалении шага');
+                }
+            } catch (error) {
+                alert('Ошибка соединения');
+            }
+        }
+
+        async function addAnswer(stepId) {
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+            formData.append('answer_text', 'Новый вариант ответа');
+            formData.append('points', '0');
+
+            try {
+                const response = await fetch(`/admin/trainer/step/${stepId}/answer/create`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('Ошибка при добавлении ответа');
+                }
+            } catch (error) {
+                alert('Ошибка соединения');
+            }
+        }
+
+        async function deleteAnswer(answerId) {
+            if (!confirm('Удалить этот вариант ответа?')) return;
+
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+
+            try {
+                const response = await fetch(`/admin/trainer/answer/${answerId}/delete`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('Ошибка при удалении ответа');
+                }
+            } catch (error) {
+                alert('Ошибка соединения');
+            }
+        }
+    </script>
+</body>
+</html>

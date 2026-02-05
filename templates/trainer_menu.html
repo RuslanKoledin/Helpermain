@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тренажер - Helper</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenHover: #009448;
+            --greenLight: #00d4aa;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            min-height: 100vh;
+            padding: 24px;
+            color: var(--text);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            animation: fadeIn 0.4s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .back-link {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            color: var(--text);
+            background: rgba(0, 166, 81, 0.15);
+            border: 1px solid rgba(0, 166, 81, 0.3);
+            padding: 10px 18px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .back-link:hover {
+            background: rgba(0, 166, 81, 0.25);
+            border-color: rgba(0, 166, 81, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        h1 {
+            color: var(--text);
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 15px;
+            margin-bottom: 30px;
+        }
+
+        /* Progress Card */
+        .progress-card {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 35px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .progress-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .progress-stats {
+            display: flex;
+            gap: 24px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--greenLight);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        .progress-bar-container {
+            background: var(--border);
+            border-radius: 8px;
+            height: 8px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, var(--green), var(--greenLight));
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.5s ease;
+        }
+
+        /* Levels Grid */
+        .levels-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .level-card {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 28px 24px;
+            text-decoration: none;
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .level-card:not(.locked):hover {
+            transform: translateY(-4px);
+            border-color: rgba(0, 166, 81, 0.5);
+            box-shadow: 0 12px 30px rgba(0, 166, 81, 0.15);
+        }
+
+        .level-card.locked {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .level-card.locked::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                rgba(0,0,0,0.1) 10px,
+                rgba(0,0,0,0.1) 20px
+            );
+        }
+
+        .level-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .level-icon {
+            font-size: 40px;
+            line-height: 1;
+        }
+
+        .level-info {
+            flex: 1;
+        }
+
+        .level-name {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .level-status {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .level-status.unlocked {
+            color: var(--greenLight);
+        }
+
+        .level-description {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.5;
+            margin-bottom: 20px;
+            flex: 1;
+        }
+
+        .level-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .level-progress {
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .level-progress strong {
+            color: var(--text);
+        }
+
+        .level-avg {
+            font-size: 13px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: rgba(0, 166, 81, 0.15);
+            color: var(--greenLight);
+        }
+
+        .lock-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 12px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+        }
+
+        .lock-icon {
+            font-size: 16px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 16px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
+
+            .progress-stats {
+                gap: 16px;
+            }
+
+            .stat-value {
+                font-size: 20px;
+            }
+
+            .levels-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .back-link {
+                top: 16px;
+                left: 16px;
+                font-size: 12px;
+                padding: 8px 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="{{ url_for('choose_help_type') }}" class="back-link">
+        &larr; Назад
+    </a>
+
+    <div class="container">
+        <div class="header">
+            <div class="header-icon">🎯</div>
+            <h1>Тренажер оператора</h1>
+            <p class="subtitle">Отработайте навыки работы с клиентами в интерактивных сценариях</p>
+        </div>
+
+        <!-- Общий прогресс -->
+        <div class="progress-card">
+            <div class="progress-header">
+                <div class="progress-title">Ваш прогресс</div>
+                <div class="progress-stats">
+                    <div class="stat-item">
+                        <div class="stat-value">{{ progress.total_completed }}</div>
+                        <div class="stat-label">Пройдено</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{{ progress.total_scenarios }}</div>
+                        <div class="stat-label">Всего</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{{ progress.average_score }}%</div>
+                        <div class="stat-label">Средний балл</div>
+                    </div>
+                </div>
+            </div>
+            <div class="progress-bar-container">
+                {% set percent = (progress.total_completed / progress.total_scenarios * 100) if progress.total_scenarios > 0 else 0 %}
+                <div class="progress-bar" style="width: {{ percent }}%"></div>
+            </div>
+        </div>
+
+        <!-- Уровни -->
+        <div class="levels-grid">
+            {% for level in levels %}
+                {% set level_progress = progress.levels.get(level.code, {}) %}
+                {% set is_unlocked = level_progress.get('is_unlocked', False) or not level.required_level %}
+
+                {% if is_unlocked %}
+                <a href="{{ url_for('trainer_level', level_code=level.code) }}" class="level-card" style="border-left: 4px solid {{ level.color }}">
+                {% else %}
+                <div class="level-card locked" style="border-left: 4px solid {{ level.color }}">
+                {% endif %}
+
+                    <div class="level-header">
+                        <div class="level-icon">{{ level.icon }}</div>
+                        <div class="level-info">
+                            <div class="level-name">{{ level.name }}</div>
+                            <div class="level-status {% if is_unlocked %}unlocked{% endif %}">
+                                {% if is_unlocked %}
+                                    Доступен
+                                {% else %}
+                                    Заблокирован
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="level-description">{{ level.description }}</div>
+
+                    {% if is_unlocked %}
+                    <div class="level-footer">
+                        <div class="level-progress">
+                            Пройдено: <strong>{{ level_progress.get('completed', 0) }}/{{ level_progress.get('total', 0) }}</strong>
+                        </div>
+                        {% if level_progress.get('avg_percent', 0) > 0 %}
+                        <div class="level-avg">{{ level_progress.get('avg_percent', 0) }}%</div>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <div class="lock-info">
+                        <span class="lock-icon">🔒</span>
+                        <span>Пройдите уровень "{{ level_progress.get('required_level', 'предыдущий') }}" с результатом {{ level.required_percent }}%+</span>
+                    </div>
+                    {% endif %}
+
+                {% if is_unlocked %}
+                </a>
+                {% else %}
+                </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

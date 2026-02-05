@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Результаты - Тренажер</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenHover: #009448;
+            --greenLight: #00d4aa;
+            --red: #f44336;
+            --orange: #ff9800;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            min-height: 100vh;
+            padding: 24px;
+            color: var(--text);
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Score Card */
+        .score-card {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .score-card.excellent {
+            border-color: rgba(76, 175, 80, 0.5);
+            background: linear-gradient(180deg, rgba(76, 175, 80, 0.1), var(--card2));
+        }
+
+        .score-card.good {
+            border-color: rgba(139, 195, 74, 0.5);
+            background: linear-gradient(180deg, rgba(139, 195, 74, 0.1), var(--card2));
+        }
+
+        .score-card.partial {
+            border-color: rgba(255, 152, 0, 0.5);
+            background: linear-gradient(180deg, rgba(255, 152, 0, 0.1), var(--card2));
+        }
+
+        .score-card.fail {
+            border-color: rgba(244, 67, 54, 0.5);
+            background: linear-gradient(180deg, rgba(244, 67, 54, 0.1), var(--card2));
+        }
+
+        .grade-icon {
+            font-size: 72px;
+            margin-bottom: 16px;
+            animation: bounceIn 0.6s ease;
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .grade-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .grade-message {
+            font-size: 15px;
+            color: var(--muted);
+            margin-bottom: 24px;
+        }
+
+        .score-display {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 20px;
+        }
+
+        .score-item {
+            text-align: center;
+        }
+
+        .score-value {
+            font-size: 42px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .score-card.excellent .score-value { color: #4CAF50; }
+        .score-card.good .score-value { color: #8BC34A; }
+        .score-card.partial .score-value { color: #FF9800; }
+        .score-card.fail .score-value { color: #F44336; }
+
+        .score-label {
+            font-size: 13px;
+            color: var(--muted);
+            margin-top: 6px;
+        }
+
+        .score-divider {
+            width: 1px;
+            background: var(--border);
+        }
+
+        .scenario-info {
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .scenario-info strong {
+            color: var(--text);
+        }
+
+        /* Details Section */
+        .details-section {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .details-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .answer-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .answer-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .answer-status {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .answer-status.correct {
+            background: rgba(76, 175, 80, 0.2);
+        }
+
+        .answer-status.partial {
+            background: rgba(255, 152, 0, 0.2);
+        }
+
+        .answer-status.wrong {
+            background: rgba(244, 67, 54, 0.2);
+        }
+
+        .answer-content {
+            flex: 1;
+        }
+
+        .answer-question {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+
+        .answer-text {
+            font-size: 14px;
+            color: var(--text);
+        }
+
+        .answer-points {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--greenLight);
+            white-space: nowrap;
+        }
+
+        /* Actions */
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .action-btn {
+            padding: 16px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(135deg, var(--green), var(--greenHover));
+            color: white;
+        }
+
+        .action-btn.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 166, 81, 0.3);
+        }
+
+        .action-btn.secondary {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .action-btn.secondary:hover {
+            background: var(--card2);
+        }
+
+        .actions-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .actions-row .action-btn {
+            flex: 1;
+        }
+
+        /* Confetti Animation */
+        .confetti-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            animation: fall 3s linear forwards;
+        }
+
+        @keyframes fall {
+            0% {
+                transform: translateY(-100px) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 16px;
+            }
+
+            .score-card {
+                padding: 30px 20px;
+            }
+
+            .grade-icon {
+                font-size: 56px;
+            }
+
+            .grade-title {
+                font-size: 24px;
+            }
+
+            .score-display {
+                gap: 24px;
+            }
+
+            .score-value {
+                font-size: 32px;
+            }
+
+            .actions-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    {% if result.grade == 'excellent' %}
+    <div class="confetti-container" id="confetti"></div>
+    {% endif %}
+
+    <div class="container">
+        <!-- Score Card -->
+        <div class="score-card {{ result.grade }}">
+            <div class="grade-icon">{{ grade_info.icon }}</div>
+            <div class="grade-title">{{ grade_info.name }}</div>
+            <div class="grade-message">{{ grade_info.message }}</div>
+
+            <div class="score-display">
+                <div class="score-item">
+                    <div class="score-value">{{ result.percent }}%</div>
+                    <div class="score-label">Результат</div>
+                </div>
+                <div class="score-divider"></div>
+                <div class="score-item">
+                    <div class="score-value">{{ result.score }}</div>
+                    <div class="score-label">из {{ result.max_score }} баллов</div>
+                </div>
+            </div>
+
+            <div class="scenario-info">
+                <strong>{{ result.scenario_title }}</strong><br>
+                Уровень: {{ result.level_name }}
+            </div>
+        </div>
+
+        <!-- Details -->
+        {% if answers_detail %}
+        <div class="details-section">
+            <div class="details-title">
+                <span>📝</span>
+                <span>Детализация ответов</span>
+            </div>
+
+            {% for answer in answers_detail %}
+            <div class="answer-item">
+                <div class="answer-status {% if answer.is_correct %}correct{% elif answer.is_partial %}partial{% else %}wrong{% endif %}">
+                    {% if answer.is_correct %}✓{% elif answer.is_partial %}~{% else %}✗{% endif %}
+                </div>
+                <div class="answer-content">
+                    <div class="answer-question">Вопрос {{ answer.step_num }}</div>
+                    <div class="answer-text">{{ answer.answer_text }}</div>
+                </div>
+                <div class="answer-points">+{{ answer.points }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Actions -->
+        <div class="actions">
+            <a href="{{ url_for('trainer_play', scenario_id=result.scenario_id) }}" class="action-btn primary">
+                Пройти ещё раз
+            </a>
+            <div class="actions-row">
+                {% if next_scenario %}
+                <a href="{{ url_for('trainer_play', scenario_id=next_scenario.id) }}" class="action-btn secondary">
+                    Следующий сценарий
+                </a>
+                {% endif %}
+                <a href="{{ url_for('trainer_level', level_code=result.level_code) }}" class="action-btn secondary">
+                    К списку сценариев
+                </a>
+            </div>
+            <a href="{{ url_for('trainer_menu') }}" class="action-btn secondary">
+                В главное меню
+            </a>
+        </div>
+    </div>
+
+    {% if result.grade == 'excellent' %}
+    <script>
+        // Confetti animation for excellent results
+        function createConfetti() {
+            const container = document.getElementById('confetti');
+            const colors = ['#4CAF50', '#8BC34A', '#00d4aa', '#FFD700', '#FF6B6B'];
+
+            for (let i = 0; i < 100; i++) {
+                setTimeout(() => {
+                    const confetti = document.createElement('div');
+                    confetti.className = 'confetti';
+                    confetti.style.left = Math.random() * 100 + 'vw';
+                    confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                    confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+                    confetti.style.animationDelay = Math.random() * 0.5 + 's';
+
+                    if (Math.random() > 0.5) {
+                        confetti.style.borderRadius = '50%';
+                    }
+
+                    container.appendChild(confetti);
+
+                    setTimeout(() => confetti.remove(), 4000);
+                }, i * 30);
+            }
+        }
+
+        createConfetti();
+    </script>
+    {% endif %}
+</body>
+</html>

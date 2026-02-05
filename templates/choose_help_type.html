@@ -162,6 +162,22 @@
             line-height: 1.5;
         }
 
+        /* Карточка тренажера - занимает всю ширину */
+        .trainer-card {
+            grid-column: 1 / -1;
+            background: linear-gradient(180deg, #1a1f1a, #1a2520);
+            border-color: rgba(0, 166, 81, 0.3);
+        }
+
+        .trainer-card:hover {
+            border-color: rgba(0, 166, 81, 0.6);
+            background: linear-gradient(180deg, #1f2a1f, #1f2f25);
+        }
+
+        .trainer-card .help-icon {
+            filter: none;
+        }
+
         .admin-link {
             position: fixed;
             top: 20px;
@@ -255,6 +271,15 @@
                 <div class="help-title">Тематики обращений</div>
                 <div class="help-description">
                     Найдите подходящую тематику для фиксации обращения клиента
+                </div>
+            </a>
+
+            <!-- Тренажер -->
+            <a href="{{ url_for('trainer_menu') }}" class="help-card trainer-card">
+                <div class="help-icon">🎯</div>
+                <div class="help-title">Тренажер</div>
+                <div class="help-description">
+                    Отработайте навыки работы с клиентами в различных ситуациях
                 </div>
             </a>
         </div>
