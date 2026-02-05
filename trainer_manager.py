@@ -439,7 +439,7 @@ class TrainerManager:
                           answer_data['feedback'], answer_order))
 
         self.conn.commit()
-        print("✅ Тестовые сценарии тренажера созданы")
+        # Тестовые сценарии тренажера созданы
 
     # ==================== УРОВНИ ====================
 
