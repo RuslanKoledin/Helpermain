@@ -2,7 +2,7 @@ import os
 import threading
 from typing import Any
 from markupsafe import escape as m_escape
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from flask import Flask, render_template, request, session, redirect, url_for, flash, abort, jsonify
 from dotenv import load_dotenv
 import telebot
@@ -150,6 +150,7 @@ try:
     NEW_TICKETS_THREAD_ID = int(os.getenv('NEW_TICKETS_THREAD_ID', '0'))
     IN_PROGRESS_THREAD_ID = int(os.getenv('IN_PROGRESS_THREAD_ID', '0'))
     SOLVED_TICKETS_THREAD_ID = int(os.getenv('SOLVED_TICKETS_THREAD_ID', '0'))
+    CISCO_TICKETS_THREAD_ID = int(os.getenv('CISCO_TICKETS_THREAD_ID', '0'))
 
     if not all([TECH_SUPPORT_CHAT_ID, NEW_TICKETS_THREAD_ID, IN_PROGRESS_THREAD_ID, SOLVED_TICKETS_THREAD_ID]):
         print("ПРЕДУПРЕЖДЕНИЕ: Не все ID чатов/топиков Telegram установлены!")
@@ -260,7 +261,7 @@ def get_file_url(file_id):
         print(f"Error getting file URL")
         return None
 
-def send_ticket(problem, screenshots=None, topic_info=None):
+def send_ticket(problem, screenshots=None, topic_info=None, video=None, thread_id=None):
     user_info = session.get('user_info', {})
     department = user_info.get('department', 'Неизвестно')
     name = user_info.get('name', 'Неизвестно')
@@ -283,11 +284,12 @@ def send_ticket(problem, screenshots=None, topic_info=None):
     # topic_info используется только на стороне веб-приложения
 
     try:
+        target_thread_id = thread_id or NEW_TICKETS_THREAD_ID
         print(f"[send_ticket] Отправка новой заявки в чат {TECH_SUPPORT_CHAT_ID}")
         msg = bot.send_message(
             TECH_SUPPORT_CHAT_ID,
             support_message,
-            message_thread_id=NEW_TICKETS_THREAD_ID,
+            message_thread_id=target_thread_id,
             parse_mode='Markdown',
             reply_markup=create_ticket_buttons()  # <- добавляем кнопки
         )
@@ -295,17 +297,42 @@ def send_ticket(problem, screenshots=None, topic_info=None):
 
         # Отправляем скриншоты, если они есть
         if screenshots:
-            for i, screenshot in enumerate(screenshots, 1):
-                try:
+            try:
+                if len(screenshots) > 1:
+                    media = []
+                    for i, screenshot in enumerate(screenshots, 1):
+                        if i == 1:
+                            media.append(InputMediaPhoto(screenshot, caption="Скриншоты"))
+                        else:
+                            media.append(InputMediaPhoto(screenshot))
+                    bot.send_media_group(
+                        TECH_SUPPORT_CHAT_ID,
+                        media,
+                        message_thread_id=target_thread_id
+                    )
+                    print(f"[send_ticket] Отправлены скриншоты альбомом ({len(screenshots)})")
+                else:
                     bot.send_photo(
                         TECH_SUPPORT_CHAT_ID,
-                        screenshot,
-                        caption=f"Скриншот {i}",
-                        message_thread_id=NEW_TICKETS_THREAD_ID
+                        screenshots[0],
+                        caption="Скриншот 1",
+                        message_thread_id=target_thread_id
                     )
-                    print(f"[send_ticket] Отправлен скриншот {i}")
-                except Exception as e:
-                    print(f"[send_ticket] Ошибка при отправке скриншота {i}: {e}")
+                    print("[send_ticket] Отправлен скриншот 1")
+            except Exception as e:
+                print(f"[send_ticket] Ошибка при отправке скриншотов: {e}")
+
+        if video:
+            try:
+                bot.send_video(
+                    TECH_SUPPORT_CHAT_ID,
+                    video,
+                    caption="Видео",
+                    message_thread_id=target_thread_id
+                )
+                print("[send_ticket] Отправлено видео")
+            except Exception as e:
+                print(f"[send_ticket] Ошибка при отправке видео: {e}")
 
         # Логируем в PostgreSQL для статистики
         topic_id = None
@@ -654,18 +681,10 @@ def select_problem(problem_id):
         print(f"[select_problem] Invalid problem_id format: {problem_id}")
         abort(404)
 
-    try:
-        problem_id_int = int(problem_id)
-        if problem_id_int < 1 or problem_id_int > 7:
-            print(f"[select_problem] problem_id out of range: {problem_id}")
-            abort(404)
-    except ValueError:
-        print(f"[select_problem] Invalid problem_id (not an integer): {problem_id}")
-        abort(404)
-
-    # --- Белый список проблем ---
     # Загружаем актуальные мануалы из JSON
     manuals = load_manuals()
+
+    # Проверяем что мануал существует
     if problem_id not in manuals:
         print(f"[select_problem] problem_id not in manuals: {problem_id}")
         flash('Выбрана несуществующая проблема.')
@@ -724,18 +743,24 @@ def select_problem(problem_id):
         session['problem_title'] = manual_title
 
         # Если выбрана "Другая проблема" или "CISCO" — редиректим
-        if 'Другая проблема' in str(raw_manual_title) or 'CISCO' in str(raw_manual_title):
-            print(f"[select_problem] Redirecting to other_problem for problem_id: {problem_id}")
+        raw_title = str(raw_manual_title)
+        raw_title_lower = raw_title.lower()
+        if 'другая проблема' in raw_title_lower:
+            session['other_problem_type'] = 'other'
+            print(f"[select_problem] Redirecting to other_problem (other) for problem_id: {problem_id}")
+            return redirect(url_for('other_problem'))
+        if 'cisco' in raw_title_lower:
+            session['other_problem_type'] = 'cisco'
+            print(f"[select_problem] Redirecting to other_problem (cisco) for problem_id: {problem_id}")
             return redirect(url_for('other_problem'))
 
         # --- Обрабатываем фото ---
         photo_urls_with_captions = []
         for photo in problem_data.get('photos', []):
             url = get_file_url(photo.get('id'))
-            if not url:
-                continue
             caption = photo.get('caption', '')
             safe_caption = m_escape(str(caption).strip()[:300])
+            # Сохраняем шаг даже если фото отсутствует
             photo_urls_with_captions.append({'url': url, 'caption': safe_caption})
 
         # --- Экранируем и передаём безопасные данные ---
@@ -787,7 +812,8 @@ def show_manual(subproblem_id):
 
     # Если это подпроблема с возможностью добавления скриншотов и нет фотографий
     if can_add_screenshots and not subproblem_data.get('photos'):
-        return render_template('other_problem.html')
+        session['other_problem_type'] = 'other'
+        return render_template('other_problem.html', is_cisco=False)
 
     photo_urls_with_captions = []
     for photo in subproblem_data.get('photos', []):
@@ -828,6 +854,15 @@ def show_manual(subproblem_id):
 def other_problem():
     if 'user_info' not in session:
         return redirect(url_for('index'))
+    other_problem_type = (
+        request.args.get('type')
+        or request.form.get('problem_type')
+        or session.get('other_problem_type', 'other')
+    )
+    if other_problem_type not in ['other', 'cisco']:
+        other_problem_type = 'other'
+    session['other_problem_type'] = other_problem_type
+    is_cisco = other_problem_type == 'cisco'
     if request.method == 'POST':
         problem_description = request.form.get('problem')
 
@@ -878,10 +913,48 @@ def other_problem():
 
                     screenshots.append(file)
 
-        send_ticket(problem_description, screenshots, topic_info)
-        session.clear()
+        video_file = None
+        if is_cisco and 'video' in request.files:
+            video = request.files.get('video')
+            if video and video.filename:
+                allowed_video_types = {
+                    'video/mp4',
+                    'video/quicktime',
+                    'video/webm',
+                    'video/x-msvideo'
+                }
+                max_video_size = 50 * 1024 * 1024  # 50 МБ
+
+                if not video.content_type or video.content_type not in allowed_video_types:
+                    flash(f'Файл {video.filename} имеет недопустимый тип. Разрешены: MP4, MOV, WEBM, AVI')
+                else:
+                    video.seek(0, os.SEEK_END)
+                    video_size = video.tell()
+                    video.seek(0)
+                    if video_size > max_video_size:
+                        flash(f'Видео {video.filename} слишком большое. Максимальный размер: 50 МБ')
+                    else:
+                        video_file = video
+
+        if is_cisco:
+            target_thread_id = CISCO_TICKETS_THREAD_ID or NEW_TICKETS_THREAD_ID
+        else:
+            target_thread_id = NEW_TICKETS_THREAD_ID
+        send_ticket(problem_description, screenshots, topic_info, video=video_file, thread_id=target_thread_id)
+        # Не сбрасываем user_info/workplace — сохраняем авторизацию
+        for key in [
+            'problem_id',
+            'problem_title',
+            'current_subproblem_id',
+            'other_problem_type',
+            'selected_topic_id',
+            'selected_topic_name',
+            'selected_topic_similarity',
+            'next_after_workplace'
+        ]:
+            session.pop(key, None)
         return render_template('ticket_sent.html')
-    return render_template('other_problem.html')
+    return render_template('other_problem.html', is_cisco=is_cisco)
 
 @app.route('/send_final_ticket')
 def send_final_ticket():
@@ -1138,6 +1211,9 @@ def handle_video_upload(message):
 @bot.message_handler(func=lambda message: message.chat.type in ['group', 'supergroup'])
 def handle_channel_messages(message):
     try:
+        thread_id = getattr(message, 'message_thread_id', None)
+        if thread_id:
+            print(f"[thread] message_thread_id={thread_id}")
         print(f"Получено сообщение: {message.text} от {message.from_user.id}")
         if message.reply_to_message:
             print(f"Это ответ на сообщение ID {message.reply_to_message.message_id}")
@@ -1190,6 +1266,19 @@ def user_login():
         if len(username) > 100 or len(password) > 128:
             flash('Некорректные учётные данные')
             return redirect(url_for('user_login'))
+
+        # ВРЕМЕННО: Тестовый пользователь для локальной разработки
+        if username == 'test' and password == 'test':
+            session['user_info'] = {
+                'username': 'test',
+                'name': 'Тестовый пользователь',
+                'department': 'IT',
+                'email': 'test@example.com',
+                'workplace': ''
+            }
+            session['authenticated'] = True
+            session.permanent = True
+            return redirect(url_for('choose_help_type'))
 
         # Аутентификация через AD
         from ad_auth import ad_auth
@@ -1305,12 +1394,55 @@ def admin_edit_manual(manual_id):
         flash('Мануал не найден')
         return redirect(url_for('admin_dashboard'))
 
-    # Если есть подпроблемы - показываем список подпроблем
-    if 'subproblems' in manual and manual['subproblems']:
+    # Если мануал имеет поле subproblems - это мануал с подпроблемами (даже если пусто)
+    if 'subproblems' in manual:
         return render_template('admin_manual_subproblems.html', manual_id=manual_id, manual=manual)
 
-    # Если нет подпроблем - редактируем сам мануал (старая логика для обратной совместимости)
-    return render_template('admin_edit_manual.html', manual_id=manual_id, manual=manual, photo_urls={}, video_urls={})
+    # Если нет поля subproblems - это простой мануал
+    return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
+
+
+@app.route('/admin/manual/<string:manual_id>/edit-simple')
+@AdminAuth.login_required
+def admin_edit_simple_manual(manual_id):
+    """Редактирование простого мануала (без подпроблем)"""
+    manual = admin_manager.get_manual(manual_id)
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    # Проверяем, что это действительно мануал с подпроблемами (непустой объект)
+    if 'subproblems' in manual and manual['subproblems']:
+        flash('Этот мануал содержит подпроблемы, используйте другой редактор')
+        return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+
+    # Получаем URLs для фотографий
+    photo_urls = []
+    if 'photos' in manual:
+        for photo in manual['photos']:
+            url = get_file_url(photo.get('id'))
+            photo_urls.append(url)
+
+    # Получаем URL для видео
+    video_url = None
+    if 'video' in manual and manual['video']:
+        video_id = manual['video'].get('id')
+        if video_id:
+            video_url = get_file_url(video_id)
+
+    # Определяем, это простой мануал или мануал с подпроблемами но без подпроблем
+    # Простой мануал = НЕТ поля subproblems
+    # Мануал с подпроблемами (пустой) = ЕСТЬ поле subproblems, но пустой объект
+    is_truly_simple = 'subproblems' not in manual
+
+    return render_template('admin_edit_subproblem.html',
+                         manual_id=manual_id,
+                         manual_title=manual.get('title', ''),
+                         subproblem_id=manual_id,  # Для простого мануала используем manual_id
+                         subproblem=manual,
+                         photo_urls=photo_urls,
+                         video_url=video_url,
+                         is_simple_manual=is_truly_simple)
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/edit')
@@ -1404,21 +1536,27 @@ def admin_update_subproblem(manual_id, subproblem_id):
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    if not admin_manager.validate_subproblem_id(subproblem_id):
-        flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
-
     manual = admin_manager.get_manual(manual_id)
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_dashboard'))
 
-    # Проверяем существование подпроблемы
-    if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
-        flash('Подпроблема не найдена')
-        return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+    is_simple_manual = 'subproblems' not in manual
 
-    subproblem = manual['subproblems'][subproblem_id]
+    # Простые мануалы используют manual_id как subproblem_id
+    if is_simple_manual and subproblem_id == manual_id:
+        subproblem = manual
+    else:
+        if not admin_manager.validate_subproblem_id(subproblem_id):
+            flash('Некорректный ID подпроблемы')
+            return redirect(url_for('admin_dashboard'))
+
+        # Проверяем существование подпроблемы
+        if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
+            flash('Подпроблема не найдена')
+            return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+
+        subproblem = manual['subproblems'][subproblem_id]
 
     # Обновляем подписи к фото
     if 'photos' in subproblem:
@@ -1443,6 +1581,8 @@ def admin_update_subproblem(manual_id, subproblem_id):
     else:
         flash('Ошибка при сохранении изменений')
 
+    if is_simple_manual and subproblem_id == manual_id:
+        return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
     return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
 
 
@@ -1640,9 +1780,13 @@ def admin_add_new_step():
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    if not admin_manager.validate_subproblem_id(subproblem_id):
-        flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
+    # Для простых мануалов subproblem_id = manual_id, не требует валидации формата X.Y
+    manual = admin_manager.get_manual(manual_id)
+    if manual and 'subproblems' in manual:
+        # Это мануал с подпроблемами - проверяем формат подпроблемы
+        if not admin_manager.validate_subproblem_id(subproblem_id):
+            flash('Некорректный ID подпроблемы')
+            return redirect(url_for('admin_dashboard'))
 
     caption = admin_manager.sanitize_text(caption, max_length=300)
     if not caption:
@@ -1664,7 +1808,58 @@ def admin_add_new_step():
     else:
         flash('Ошибка при добавлении шага')
 
-    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+    # Редирект обратно на страницу редактирования
+    manual = admin_manager.get_manual(manual_id)
+    if manual and 'subproblems' in manual:
+        return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+    else:
+        return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
+
+
+@app.route('/admin/delete-step', methods=['POST'])
+@AdminAuth.login_required
+def admin_delete_step():
+    """Удаление целого шага (фото + описание)"""
+    manual_id = request.form.get('manual_id', '')
+    subproblem_id = request.form.get('subproblem_id', '')
+    step_index_str = request.form.get('step_index', '0')
+
+    try:
+        step_index = int(step_index_str)
+    except:
+        flash('Некорректный индекс шага')
+        return redirect(url_for('admin_dashboard'))
+
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    # Определяем тип мануала и получаем нужный объект
+    if 'subproblems' in manual:
+        if subproblem_id not in manual['subproblems']:
+            flash('Подпроблема не найдена')
+            return redirect(url_for('admin_dashboard'))
+        target_obj = manual['subproblems'][subproblem_id]
+        redirect_url = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
+    else:
+        target_obj = manual
+        redirect_url = url_for('admin_edit_simple_manual', manual_id=manual_id)
+
+    if 'photos' not in target_obj or step_index >= len(target_obj['photos']):
+        flash('Шаг не найден')
+        return redirect(redirect_url)
+
+    del target_obj['photos'][step_index]
+
+    if admin_manager.save_manuals(manuals):
+        flash(f'Шаг {step_index + 1} удалён')
+    else:
+        flash('Ошибка при удалении шага')
+
+    return redirect(redirect_url)
 
 
 @app.route('/admin/upload-video', methods=['GET', 'POST'])
@@ -2248,6 +2443,135 @@ def run_bot():
     except Exception as e:
         print(f"❌ Ошибка в bot polling: {e}")
         traceback.print_exc()
+
+
+# ============ CRUD МАНУАЛОВ ============
+
+@app.route('/admin/manual/create', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_create_manual():
+    """Создание нового мануала с авто-нумерацией"""
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        manual_type = request.form.get('manual_type', 'with_subproblems')
+        
+        if not title:
+            flash('Название обязательно')
+            return render_template('admin_create_manual.html')
+        
+        manuals = admin_manager.load_manuals()
+        
+        # Авто-нумерация: находим следующий свободный ID
+        existing_ids = [int(mid) for mid in manuals.keys() if mid.isdigit()]
+        next_id = str(max(existing_ids) + 1) if existing_ids else '1'
+        
+        # Добавляем номер к названию
+        title_with_number = f"{next_id}. {title}"
+        
+        # Создаём мануал в зависимости от типа
+        if manual_type == 'simple':
+            manuals[next_id] = {
+                "title": title_with_number,
+                "photos": []
+            }
+        else:
+            manuals[next_id] = {
+                "title": title_with_number,
+                "subproblems": {}
+            }
+        
+        if admin_manager.save_manuals(manuals):
+            flash(f'Мануал "{title_with_number}" успешно создан!')
+            return redirect(url_for('admin_dashboard'))
+        else:
+            flash('Ошибка при создании мануала')
+    
+    return render_template('admin_create_manual.html')
+
+
+@app.route('/admin/manual/<string:manual_id>/subproblem/create', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_create_subproblem(manual_id):
+    """Создание подпроблемы в мануале"""
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+    
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    # Если у мануала нет subproblems, создаём пустой словарь
+    if 'subproblems' not in manual:
+        manual['subproblems'] = {}
+    
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        
+        if not title:
+            flash('Название подпроблемы обязательно')
+            return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+        
+        # Генерируем ID подпроблемы (manual_id.X)
+        existing_nums = []
+        for sub_id in manual['subproblems'].keys():
+            parts = sub_id.split('.')
+            if len(parts) == 2 and parts[1].isdigit():
+                existing_nums.append(int(parts[1]))
+        
+        next_num = max(existing_nums) + 1 if existing_nums else 1
+        subproblem_id = f"{manual_id}.{next_num}"
+        
+        manual['subproblems'][subproblem_id] = {
+            "title": title,
+            "photos": []
+        }
+        
+        if admin_manager.save_manuals(manuals):
+            flash(f'Подпроблема "{title}" успешно создана!')
+            return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+        else:
+            flash('Ошибка при создании подпроблемы')
+    
+    return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+
+
+@app.route('/admin/manual/<string:manual_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_delete_manual(manual_id):
+    """Удаление мануала"""
+    manuals = admin_manager.load_manuals()
+    
+    if manual_id in manuals:
+        del manuals[manual_id]
+        if admin_manager.save_manuals(manuals):
+            flash(f'Мануал удалён')
+            return redirect(url_for('admin_dashboard'))
+        else:
+            flash('Ошибка при удалении')
+    else:
+        flash('Мануал не найден')
+    
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_delete_subproblem(manual_id, subproblem_id):
+    """Удаление подпроблемы"""
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+    
+    if manual and 'subproblems' in manual and subproblem_id in manual['subproblems']:
+        del manual['subproblems'][subproblem_id]
+        if admin_manager.save_manuals(manuals):
+            flash(f'Подпроблема удалена')
+            return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+        else:
+            flash('Ошибка при удалении')
+    else:
+        flash('Подпроблема не найдена')
+    
+    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
 
 if __name__ == '__main__':
     print("=" * 60)

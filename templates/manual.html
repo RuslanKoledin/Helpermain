@@ -12,9 +12,9 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
-            color: #333;
+            color: #e8e8e8;
             line-height: 1.6;
             margin: 0;
             padding: 20px;
@@ -23,7 +23,7 @@
         .container {
             max-width: 850px;
             margin: 0 auto;
-            background-color: #ffffff;
+            background: linear-gradient(180deg, #1a1a1a, #202020); border: 1px solid #151515;
             padding: 40px;
             border-radius: 20px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
@@ -42,7 +42,7 @@
         }
 
         h1 {
-            color: #007b7e;
+            color: #e8e8e8;
             text-align: center;
             margin-bottom: 35px;
             font-size: 28px;
@@ -54,20 +54,20 @@
             flex-direction: column;
             align-items: center;
             margin-bottom: 35px;
-            border: 2px solid #e3f2fd;
+            border: 2px solid #2a2a2a;
             border-radius: 16px;
             padding: 25px;
-            background-color: #f0f8ff;
+            background-color: #1a1a1a;
             transition: all 0.3s ease;
         }
 
         .instruction-step:hover {
-            border-color: #007bff;
-            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.1);
+            border-color: #00a651;
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
         }
 
         .instruction-step p {
-            color: #333;
+            color: #e8e8e8;
             font-weight: 500;
             font-size: 17px;
             text-align: center;
@@ -107,14 +107,14 @@
             text-align: center;
             margin-top: 50px;
             padding-top: 30px;
-            border-top: 2px solid #e3f2fd;
+            border-top: 2px solid #2a2a2a;
         }
 
         .buttons-container p {
             font-size: 19px;
             font-weight: 600;
             margin-bottom: 25px;
-            color: #333;
+            color: #e8e8e8;
         }
 
         .buttons-container button {
@@ -170,7 +170,7 @@
             text-decoration: none;
             color: #ffffff;
             font-weight: 600;
-            background: rgba(0, 123, 126, 0.85);
+            background: rgba(0, 166, 81, 0.85);
             backdrop-filter: blur(10px);
             padding: 10px 20px;
             border: 2px solid rgba(255, 255, 255, 0.6);
@@ -180,7 +180,7 @@
         }
 
         .back-link:hover {
-            background: rgba(0, 123, 126, 0.95);
+            background: rgba(0, 166, 81, 0.95);
             border-color: rgba(255, 255, 255, 0.8);
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
@@ -208,7 +208,7 @@
         <h1>{{ manual_title | e }}</h1>
 
         {% if video_data %}
-            <div class="instruction-step" style="background: linear-gradient(135deg, #fff5f5 0%, #ffe6e6 100%);">
+            <div class="instruction-step" style="background: linear-gradient(135deg, #2a1a1a 0%, #1a1a1a 100%);">
                 <span class="video-badge">📹 ВИДЕО-ИНСТРУКЦИЯ</span>
                 <p><strong>{{ video_data.caption }}</strong></p>
                 <video controls style="max-width: 100%; border-radius: 12px;">
@@ -218,8 +218,8 @@
             </div>
 
             <!-- Опрос после видео -->
-            <div class="video-feedback-container" style="text-align: center; margin: 30px 0; padding: 25px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 16px; border: 2px solid #dee2e6;">
-                <p style="font-size: 18px; font-weight: 600; margin-bottom: 20px; color: #333;">Видео-инструкция помогла решить проблему?</p>
+            <div class="video-feedback-container" style="text-align: center; margin: 30px 0; padding: 25px; background: linear-gradient(135deg, #1a1a1a 0%, #202020 100%); border-radius: 16px; border: 2px solid #2a2a2a;">
+                <p style="font-size: 18px; font-weight: 600; margin-bottom: 20px; color: #e8e8e8;">Видео-инструкция помогла решить проблему?</p>
                 <div style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
                     <button onclick="location.href='{{ url_for('video_feedback', result='helped') }}'"
                             style="padding: 12px 30px; font-size: 16px; font-weight: 600; border: none; border-radius: 10px; cursor: pointer; background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); color: white; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);">
@@ -243,7 +243,7 @@
                         {% if photo.url %}
                             <img src="{{ photo.url }}" alt="Инструкция">
                         {% else %}
-                            <div style="color: #856404; margin: 10px 0; padding: 15px; background: #fff3cd; border-radius: 6px; text-align: center;">
+                            <div style="color: #f2b705; margin: 10px 0; padding: 15px; background: #2a2410; border: 1px solid #3a3410; border-radius: 6px; text-align: center;">
                                 📷 Пока фото для данного шага нет
                             </div>
                         {% endif %}
@@ -266,4 +266,3 @@
     </div>
 </body>
 </html>
-

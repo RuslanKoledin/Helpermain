@@ -12,12 +12,12 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             margin: 0;
             padding: 20px;
             min-height: 100vh;
-            color: #333;
+            color: #e8e8e8;
         }
 
         .main-wrapper {
@@ -29,7 +29,7 @@
         }
 
         .sidebar {
-            background-color: #ffffff;
+            background: linear-gradient(180deg, #1a1a1a, #202020); border: 1px solid #151515;
             padding: 30px 25px;
             border-radius: 20px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
@@ -41,7 +41,7 @@
         }
 
         .container {
-            background-color: #ffffff;
+            background: linear-gradient(180deg, #1a1a1a, #202020); border: 1px solid #151515;
             padding: 45px;
             border-radius: 20px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
@@ -73,14 +73,14 @@
         }
 
         h2 {
-            color: #007b7e;
+            color: #e8e8e8;
             margin-bottom: 15px;
             font-size: 26px;
             font-weight: 600;
         }
 
         .subtitle {
-            color: #666;
+            color: #a8a8a8;
             margin-bottom: 30px;
             font-size: 15px;
             line-height: 1.5;
@@ -95,7 +95,7 @@
             display: block;
             margin-bottom: 12px;
             font-weight: 600;
-            color: #007b7e;
+            color: #e8e8e8;
             font-size: 16px;
         }
 
@@ -112,14 +112,14 @@
 
         .search-input:focus {
             outline: none;
-            border-color: #007b7e;
+            border-color: #e8e8e8;
             box-shadow: 0 0 0 3px rgba(0, 123, 126, 0.1);
         }
 
         .search-hint {
             margin-top: 10px;
             font-size: 13px;
-            color: #666;
+            color: #a8a8a8;
             font-style: italic;
         }
 
@@ -132,27 +132,27 @@
         .topic-item {
             padding: 22px 25px;
             margin-bottom: 12px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #2a2a2a;
             border-radius: 14px;
             cursor: default;
             transition: all 0.2s ease;
-            background: #f9f9f9;
+            background: #1a1a1a;
             text-align: left;
             width: 100%;
         }
 
         /* Убран hover-эффект для просмотра
         .topic-item:hover {
-            border-color: #007b7e;
-            background: #f0f8ff;
+            border-color: #00a651;
+            background: #202020;
             transform: translateX(8px);
-            box-shadow: 0 4px 15px rgba(0, 123, 126, 0.15);
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.15);
         }
 
         .topic-item.selected {
-            border-color: #007bff;
-            background: #e3f2fd;
-            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.25);
+            border-color: #00a651;
+            background: #1f1f1f;
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.25);
         }
         */
 
@@ -165,7 +165,7 @@
 
         .topic-name {
             font-weight: 600;
-            color: #333;
+            color: #e8e8e8;
             font-size: 15px;
             line-height: 1.6;
             word-break: break-word;
@@ -188,7 +188,7 @@
 
         .loading {
             text-align: center;
-            color: #007b7e;
+            color: #e8e8e8;
             font-style: italic;
             margin: 30px 0;
             font-size: 16px;
@@ -196,7 +196,7 @@
 
         .no-results {
             text-align: center;
-            color: #999;
+            color: #a8a8a8;
             font-style: italic;
             margin: 30px 0;
             font-size: 16px;
@@ -205,7 +205,7 @@
         .empty-state {
             text-align: center;
             padding: 50px 20px;
-            color: #999;
+            color: #a8a8a8;
         }
 
         .empty-state-icon {
@@ -216,7 +216,7 @@
         .submit-button {
             width: 100%;
             padding: 18px;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            background: linear-gradient(135deg, #00a651 0%, #009448 100%);
             color: white;
             border: none;
             border-radius: 12px;
@@ -229,7 +229,7 @@
         }
 
         .submit-button:hover:not(:disabled) {
-            background: linear-gradient(135deg, #0056b3 0%, #003d82 100%);
+            background: linear-gradient(135deg, #009448 0%, #007a3a 100%);
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
         }
@@ -278,10 +278,10 @@
 
         .channel-btn {
             padding: 14px 20px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #2a2a2a;
             border-radius: 10px;
-            background: #f9f9f9;
-            color: #333;
+            background: #1a1a1a;
+            color: #e8e8e8;
             font-size: 15px;
             font-weight: 600;
             cursor: pointer;
@@ -290,15 +290,15 @@
         }
 
         .channel-btn:hover {
-            border-color: #007b7e;
-            background: #f0f8ff;
+            border-color: #00a651;
+            background: #202020;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 123, 126, 0.15);
+            box-shadow: 0 4px 12px rgba(0, 166, 81, 0.15);
         }
 
         .channel-btn.active {
             border-color: #007bff;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            background: linear-gradient(135deg, #00a651 0%, #009448 100%);
             color: white;
             box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
         }
@@ -319,7 +319,7 @@
         }
 
         .sidebar h3 {
-            color: #007b7e;
+            color: #e8e8e8;
             margin-bottom: 20px;
             font-size: 20px;
             font-weight: 600;
@@ -334,7 +334,7 @@
             display: block;
             margin-bottom: 15px;
             font-weight: 600;
-            color: #007b7e;
+            color: #e8e8e8;
             font-size: 14px;
             text-align: center;
         }

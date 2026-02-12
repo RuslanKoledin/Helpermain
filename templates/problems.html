@@ -12,7 +12,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background: #0c0c0c;
             background-attachment: fixed;
             margin: 0;
             padding: 20px;
@@ -20,11 +20,11 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            color: #333;
+            color: #e8e8e8;
         }
 
         .container {
-            background-color: #ffffff;
+            background: linear-gradient(180deg, #1a1a1a, #202020); border: 1px solid #151515;
             padding: 45px;
             border-radius: 20px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
@@ -46,7 +46,7 @@
         }
 
         h2 {
-            color: #007b7e;
+            color: #e8e8e8;
             margin-bottom: 35px;
             font-size: 24px;
             font-weight: 600;
@@ -65,28 +65,54 @@
         a {
             display: block;
             padding: 18px 20px;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            background: linear-gradient(135deg, #00a651 0%, #009448 100%);
             color: white;
             text-decoration: none;
             border-radius: 12px;
             transition: all 0.3s ease;
             font-size: 17px;
             font-weight: 600;
-            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 166, 81, 0.2);
         }
 
         a:hover {
-            background: linear-gradient(135deg, #0056b3 0%, #003d82 100%);
+            background: linear-gradient(135deg, #009448 0%, #007a3a 100%);
             transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(0, 123, 255, 0.3);
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
         }
 
         a:active {
             transform: translateY(-1px);
         }
+
+        .back-link {
+            position: fixed;
+            left: 20px;
+            top: 20px;
+            z-index: 1000;
+            font-size: 16px;
+            text-decoration: none;
+            color: #e8e8e8;
+            font-weight: 600;
+            background: rgba(26, 26, 26, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            border: 1px solid #2a2a2a;
+            border-radius: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .back-link:hover {
+            background: rgba(26, 26, 26, 1);
+            border-color: #00a651;
+            box-shadow: 0 6px 20px rgba(0, 166, 81, 0.3);
+            transform: translateY(-2px);
+        }
     </style>
 </head>
 <body>
+<a href="{{ url_for('choose_help_type') }}" class="back-link">← Назад</a>
 <div class="container">
     <h2>Здравствуйте, {{ session['user_info']['name'] }}!<br>
         С какой проблемой вы столкнулись?</h2>
@@ -113,7 +139,7 @@
 <!--            justify-content: center;-->
 <!--            align-items: center;-->
 <!--            min-height: 100vh;-->
-<!--            color: #333;-->
+<!--            color: #e8e8e8;-->
 <!--        }-->
 
 <!--        .container {-->
