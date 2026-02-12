@@ -63,6 +63,9 @@ class TrainerManager:
                 is_active BOOLEAN DEFAULT 1,
                 order_num INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                timer_seconds INTEGER DEFAULT 15,
+                initial_loyalty INTEGER DEFAULT 100,
+                client_info_json TEXT,
                 FOREIGN KEY (level_id) REFERENCES trainer_levels(id),
                 FOREIGN KEY (category_id) REFERENCES trainer_categories(id)
             )
@@ -77,6 +80,7 @@ class TrainerManager:
                 client_message TEXT NOT NULL,
                 client_avatar TEXT,
                 client_name TEXT DEFAULT 'Клиент',
+                initial_mood TEXT DEFAULT 'neutral',
                 FOREIGN KEY (scenario_id) REFERENCES trainer_scenarios(id) ON DELETE CASCADE
             )
         """)
@@ -92,6 +96,8 @@ class TrainerManager:
                 points INTEGER DEFAULT 0,
                 feedback TEXT,
                 order_num INTEGER DEFAULT 0,
+                mood_impact INTEGER DEFAULT 0,
+                knowledge_link TEXT,
                 FOREIGN KEY (step_id) REFERENCES trainer_steps(id) ON DELETE CASCADE
             )
         """)
@@ -122,6 +128,11 @@ class TrainerManager:
                 grade TEXT,
                 completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 answers_json TEXT,
+                final_loyalty INTEGER,
+                is_game_over BOOLEAN DEFAULT 0,
+                timeout_count INTEGER DEFAULT 0,
+                selected_topic_id INTEGER,
+                selected_topic_name TEXT,
                 FOREIGN KEY (scenario_id) REFERENCES trainer_scenarios(id)
             )
         """)
@@ -135,8 +146,110 @@ class TrainerManager:
 
         self.conn.commit()
 
+        # Миграция: добавляем новые колонки к существующим таблицам
+        self._migrate_gamification_fields()
+
+        # Миграция: добавляем уровень Hard
+        self._migrate_hard_level()
+
         # Инициализация начальных данных если таблицы пустые
         self._init_default_data()
+
+    def _migrate_gamification_fields(self):
+        """Миграция: добавление полей геймификации к существующим таблицам"""
+        cursor = self.conn.cursor()
+
+        # Проверяем и добавляем новые колонки в trainer_scenarios
+        try:
+            cursor.execute("SELECT timer_seconds FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN timer_seconds INTEGER DEFAULT 15")
+
+        try:
+            cursor.execute("SELECT initial_loyalty FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN initial_loyalty INTEGER DEFAULT 100")
+
+        try:
+            cursor.execute("SELECT client_info_json FROM trainer_scenarios LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN client_info_json TEXT")
+
+        # Проверяем и добавляем новые колонки в trainer_steps
+        try:
+            cursor.execute("SELECT initial_mood FROM trainer_steps LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_steps ADD COLUMN initial_mood TEXT DEFAULT 'neutral'")
+
+        # Проверяем и добавляем новые колонки в trainer_answers
+        try:
+            cursor.execute("SELECT mood_impact FROM trainer_answers LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_answers ADD COLUMN mood_impact INTEGER DEFAULT 0")
+
+        try:
+            cursor.execute("SELECT knowledge_link FROM trainer_answers LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_answers ADD COLUMN knowledge_link TEXT")
+
+        # Проверяем и добавляем новые колонки в trainer_results
+        try:
+            cursor.execute("SELECT final_loyalty FROM trainer_results LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_results ADD COLUMN final_loyalty INTEGER")
+
+        try:
+            cursor.execute("SELECT is_game_over FROM trainer_results LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_results ADD COLUMN is_game_over BOOLEAN DEFAULT 0")
+
+        try:
+            cursor.execute("SELECT timeout_count FROM trainer_results LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_results ADD COLUMN timeout_count INTEGER DEFAULT 0")
+
+        try:
+            cursor.execute("SELECT selected_topic_id FROM trainer_results LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_results ADD COLUMN selected_topic_id INTEGER")
+
+        try:
+            cursor.execute("SELECT selected_topic_name FROM trainer_results LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE trainer_results ADD COLUMN selected_topic_name TEXT")
+
+        self.conn.commit()
+
+    def _migrate_hard_level(self):
+        """Миграция: добавление уровня Hard и переименование Высокий → advanced"""
+        cursor = self.conn.cursor()
+
+        # Проверяем есть ли уже уровень с кодом 'hard' и order_num=4
+        cursor.execute("SELECT id, code FROM trainer_levels WHERE order_num = 4")
+        existing_hard = cursor.fetchone()
+
+        if not existing_hard:
+            # Переименовываем текущий "hard" в "advanced" (Высокий)
+            cursor.execute("""
+                UPDATE trainer_levels
+                SET code = 'advanced'
+                WHERE code = 'hard' AND order_num = 3
+            """)
+
+            # Добавляем новый уровень Hard
+            cursor.execute("""
+                INSERT INTO trainer_levels (name, code, description, icon, color, required_level, required_percent, order_num)
+                VALUES ('Hard', 'hard', 'Экстремальные ситуации. Максимальная сложность.', '💀', '#9C27B0', 'advanced', 80, 4)
+            """)
+
+            # Обновляем ссылки на required_level
+            cursor.execute("""
+                UPDATE trainer_levels
+                SET required_level = 'advanced'
+                WHERE required_level = 'hard' AND code != 'hard'
+            """)
+
+            self.conn.commit()
 
     def _init_default_data(self):
         """Инициализация начальных данных (уровни, категории)"""
@@ -149,7 +262,8 @@ class TrainerManager:
             levels = [
                 ("Базовый", "basic", "Основы работы с клиентами. Простые ситуации.", "🌱", "#4CAF50", None, 0, 1),
                 ("Средний", "medium", "Сложные ситуации и конфликтные клиенты.", "⚡", "#FF9800", "basic", 80, 2),
-                ("Высокий", "hard", "Нестандартные случаи и VIP-клиенты.", "🔥", "#F44336", "medium", 80, 3)
+                ("Высокий", "advanced", "Нестандартные случаи и VIP-клиенты.", "🔥", "#F44336", "medium", 80, 3),
+                ("Hard", "hard", "Экстремальные ситуации. Максимальная сложность.", "💀", "#9C27B0", "advanced", 80, 4)
             ]
             cursor.executemany("""
                 INSERT INTO trainer_levels (name, code, description, icon, color, required_level, required_percent, order_num)
@@ -767,16 +881,20 @@ class TrainerManager:
 
     # ==================== РЕЗУЛЬТАТЫ ====================
 
-    def save_result(self, user_id: str, scenario_id: int, score: int, max_score: int, answers: List[Dict]) -> Dict:
+    def save_result(self, user_id: str, scenario_id: int, score: int, max_score: int, answers: List[Dict],
+                    final_loyalty: int = None, is_game_over: bool = False, timeout_count: int = 0,
+                    selected_topic_id: int = None, selected_topic_name: str = None) -> Dict:
         """Сохранить результат прохождения"""
         percent = round((score / max_score) * 100) if max_score > 0 else 0
         grade = self.calculate_grade(percent)
 
         cursor = self.conn.cursor()
         cursor.execute("""
-            INSERT INTO trainer_results (user_id, scenario_id, score, max_score, percent, grade, answers_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, scenario_id, score, max_score, percent, grade, json.dumps(answers, ensure_ascii=False)))
+            INSERT INTO trainer_results (user_id, scenario_id, score, max_score, percent, grade, answers_json,
+                                        final_loyalty, is_game_over, timeout_count, selected_topic_id, selected_topic_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, scenario_id, score, max_score, percent, grade, json.dumps(answers, ensure_ascii=False),
+              final_loyalty, 1 if is_game_over else 0, timeout_count, selected_topic_id, selected_topic_name))
 
         self.conn.commit()
         result_id = cursor.lastrowid
@@ -791,7 +909,9 @@ class TrainerManager:
             'score': score,
             'max_score': max_score,
             'percent': percent,
-            'grade': grade
+            'grade': grade,
+            'final_loyalty': final_loyalty,
+            'is_game_over': is_game_over
         }
 
     def get_user_results(self, user_id: str, scenario_id: int = None) -> List[Dict]:
@@ -862,8 +982,8 @@ class TrainerManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO trainer_scenarios (level_id, category_id, title, description, estimated_time, total_points, is_active, order_num)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trainer_scenarios (level_id, category_id, title, description, estimated_time, total_points, is_active, order_num, timer_seconds, initial_loyalty, client_info_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 data.get('level_id'),
                 data.get('category_id'),
@@ -872,7 +992,10 @@ class TrainerManager:
                 data.get('estimated_time', 5),
                 data.get('total_points', 100),
                 data.get('is_active', 1),
-                data.get('order_num', 0)
+                data.get('order_num', 0),
+                data.get('timer_seconds', 15),
+                data.get('initial_loyalty', 100),
+                data.get('client_info_json')
             ))
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
@@ -883,7 +1006,8 @@ class TrainerManager:
         """Обновить сценарий"""
         try:
             allowed_fields = ['level_id', 'category_id', 'title', 'description',
-                            'estimated_time', 'total_points', 'is_active', 'order_num']
+                            'estimated_time', 'total_points', 'is_active', 'order_num',
+                            'timer_seconds', 'initial_loyalty', 'client_info_json']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:
@@ -927,14 +1051,15 @@ class TrainerManager:
             max_num = cursor.fetchone()[0] or 0
 
             cursor.execute("""
-                INSERT INTO trainer_steps (scenario_id, step_num, client_message, client_avatar, client_name)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO trainer_steps (scenario_id, step_num, client_message, client_avatar, client_name, initial_mood)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 scenario_id,
                 max_num + 1,
                 data.get('client_message', ''),
                 data.get('client_avatar', '👤'),
-                data.get('client_name', 'Клиент')
+                data.get('client_name', 'Клиент'),
+                data.get('initial_mood', 'neutral')
             ))
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid, "step_num": max_num + 1}
@@ -944,7 +1069,7 @@ class TrainerManager:
     def update_step(self, step_id: int, data: Dict) -> Dict:
         """Обновить шаг"""
         try:
-            allowed_fields = ['client_message', 'client_avatar', 'client_name', 'step_num']
+            allowed_fields = ['client_message', 'client_avatar', 'client_name', 'step_num', 'initial_mood']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:
@@ -981,8 +1106,8 @@ class TrainerManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO trainer_answers (step_id, answer_text, is_correct, is_partial, points, feedback, order_num)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trainer_answers (step_id, answer_text, is_correct, is_partial, points, feedback, order_num, mood_impact, knowledge_link)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 step_id,
                 data.get('answer_text', ''),
@@ -990,7 +1115,9 @@ class TrainerManager:
                 data.get('is_partial', 0),
                 data.get('points', 0),
                 data.get('feedback', ''),
-                data.get('order_num', 0)
+                data.get('order_num', 0),
+                data.get('mood_impact', 0),
+                data.get('knowledge_link')
             ))
             self.conn.commit()
             return {"success": True, "id": cursor.lastrowid}
@@ -1000,7 +1127,7 @@ class TrainerManager:
     def update_answer(self, answer_id: int, data: Dict) -> Dict:
         """Обновить вариант ответа"""
         try:
-            allowed_fields = ['answer_text', 'is_correct', 'is_partial', 'points', 'feedback', 'order_num']
+            allowed_fields = ['answer_text', 'is_correct', 'is_partial', 'points', 'feedback', 'order_num', 'mood_impact', 'knowledge_link']
             updates = {k: v for k, v in data.items() if k in allowed_fields}
 
             if not updates:

@@ -340,9 +340,101 @@
                 padding: 24px 20px;
             }
         }
+
+        /* Кнопка Админ */
+        .admin-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            background: rgba(0, 166, 129, 0.8);
+            border: 1px solid rgba(0, 166, 129, 0.5);
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .admin-btn:hover {
+            background: rgba(0, 166, 129, 1);
+            transform: translateY(-2px);
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-box {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 30px;
+            width: 320px;
+            text-align: center;
+            position: relative;
+        }
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text);
+        }
+        .modal-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        .modal-input:focus { outline: none; border-color: var(--green); }
+        .modal-btn-admin {
+            width: 100%;
+            padding: 12px;
+            background: var(--green);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .modal-btn-admin:hover { background: var(--greenHover); }
+        .modal-error { color: #f44336; font-size: 13px; margin-top: 10px; display: none; }
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 20px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
+    <button class="admin-btn" onclick="showAdminModal()">⚙️ Админ</button>
+
+    <div class="modal-overlay" id="adminModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="hideAdminModal()">×</button>
+            <div class="modal-title">🔐 Вход в админ-панель</div>
+            <input type="password" class="modal-input" id="adminPassword" placeholder="Введите пароль" onkeypress="if(event.key==='Enter')checkAdminPassword()">
+            <button class="modal-btn-admin" onclick="checkAdminPassword()">Войти</button>
+            <div class="modal-error" id="adminError">Неверный пароль</div>
+        </div>
+    </div>
+
     <a href="{{ url_for('choose_help_type') }}" class="back-link">
         ⬅️ Назад
     </a>
@@ -578,6 +670,42 @@
                 topicResults.innerHTML = '<div class="no-results">❌ Ошибка загрузки тематик</div>';
             }
         }
+
+        // Функции админ-панели
+        function showAdminModal() {
+            document.getElementById('adminModal').classList.add('show');
+            document.getElementById('adminPassword').focus();
+        }
+        function hideAdminModal() {
+            document.getElementById('adminModal').classList.remove('show');
+            document.getElementById('adminPassword').value = '';
+            document.getElementById('adminError').style.display = 'none';
+        }
+        async function checkAdminPassword() {
+            const password = document.getElementById('adminPassword').value;
+            try {
+                const response = await fetch('/api/admin/check-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password, section: 'topics' })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    window.location.href = '{{ url_for("admin_topics") }}';
+                } else {
+                    document.getElementById('adminError').style.display = 'block';
+                    document.getElementById('adminPassword').value = '';
+                }
+            } catch (e) {
+                document.getElementById('adminError').style.display = 'block';
+            }
+        }
+        document.getElementById('adminModal').addEventListener('click', function(e) {
+            if (e.target === this) hideAdminModal();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') hideAdminModal();
+        });
     </script>
 </body>
 </html>

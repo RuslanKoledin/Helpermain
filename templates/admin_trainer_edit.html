@@ -156,6 +156,44 @@
             width: auto;
         }
 
+        /* Gamification Section */
+        .gamification-section {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border: 2px solid #2196f3;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .gamification-section h2 {
+            color: #1976d2;
+            border-bottom-color: rgba(25, 118, 210, 0.3);
+        }
+
+        /* Client Card Section */
+        .client-card-section {
+            background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+            border: 2px solid #4caf50;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .client-card-section h2 {
+            color: #388e3c;
+            border-bottom-color: rgba(56, 142, 60, 0.3);
+        }
+
+        .client-card-fields {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .client-card-extra {
+            margin-top: 15px;
+        }
+
         /* Steps Section */
         .steps-section {
             margin-top: 30px;
@@ -227,9 +265,11 @@
             display: flex;
             gap: 15px;
             margin-bottom: 10px;
+            flex-wrap: wrap;
         }
 
-        .client-info input {
+        .client-info input,
+        .client-info select {
             padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 6px;
@@ -240,8 +280,14 @@
             width: 60px;
         }
 
-        .client-info input:last-child {
+        .client-info input:nth-child(2) {
             flex: 1;
+            min-width: 150px;
+        }
+
+        .mood-select {
+            background: #fff3e0;
+            border-color: #ff9800 !important;
         }
 
         /* Answers */
@@ -255,12 +301,16 @@
             border-radius: 8px;
             padding: 12px;
             margin-bottom: 10px;
+        }
+
+        .answer-main {
             display: flex;
             gap: 12px;
             align-items: flex-start;
+            margin-bottom: 10px;
         }
 
-        .answer-item textarea {
+        .answer-main textarea {
             flex: 1;
             border: none;
             resize: vertical;
@@ -268,7 +318,7 @@
             font-size: 14px;
         }
 
-        .answer-item textarea:focus {
+        .answer-main textarea:focus {
             outline: none;
         }
 
@@ -300,16 +350,42 @@
             font-size: 12px;
         }
 
-        .answer-feedback {
-            flex: 1;
+        .answer-extra {
+            display: flex;
+            gap: 12px;
+            padding-top: 10px;
+            border-top: 1px dashed #ddd;
+            flex-wrap: wrap;
         }
 
-        .answer-feedback input {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+        .answer-extra .form-group {
+            flex: 1;
+            min-width: 200px;
+            margin-bottom: 0;
+        }
+
+        .answer-extra label {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+
+        .answer-extra input,
+        .answer-extra select {
+            padding: 6px 10px;
             font-size: 12px;
+        }
+
+        .mood-impact-select {
+            background: #fff3e0;
+        }
+
+        .mood-impact-select option.positive {
+            color: #4caf50;
+        }
+
+        .mood-impact-select option.negative {
+            color: #f44336;
         }
 
         .add-btn {
@@ -377,6 +453,43 @@
             padding-top: 20px;
             border-top: 2px solid #e9ecef;
         }
+
+        /* Visual Editor Link */
+        .visual-editor-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #9c27b0, #7b1fa2);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .visual-editor-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(156, 39, 176, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                flex-direction: column;
+            }
+
+            .client-card-fields {
+                grid-template-columns: 1fr;
+            }
+
+            .client-info {
+                flex-direction: column;
+            }
+
+            .answer-extra {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 <body>
@@ -386,7 +499,12 @@
 
     <div class="container">
         <div class="header">
-            <h1>{% if scenario %}✏️ Редактирование сценария{% else %}➕ Создание сценария{% endif %}</h1>
+            <h1>{% if scenario %}Редактирование сценария{% else %}Создание сценария{% endif %}</h1>
+            {% if scenario %}
+            <a href="{{ url_for('admin_trainer_visual', scenario_id=scenario.id) }}" class="visual-editor-link">
+                Визуальный редактор
+            </a>
+            {% endif %}
         </div>
 
         {% with messages = get_flashed_messages() %}
@@ -433,7 +551,7 @@
                     <div class="form-group">
                         <label for="category_id">Категория</label>
                         <select id="category_id" name="category_id">
-                            <option value="">— Без категории —</option>
+                            <option value="">Без категории</option>
                             {% for category in categories %}
                             <option value="{{ category.id }}"
                                     {% if scenario and scenario.category_id == category.id %}selected{% endif %}>
@@ -473,6 +591,67 @@
                 </div>
             </div>
 
+            <!-- Gamification Section -->
+            <div class="gamification-section">
+                <h2>Настройки геймификации</h2>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="timer_seconds">Время на ответ (секунд)</label>
+                        <input type="number" id="timer_seconds" name="timer_seconds" min="5" max="120"
+                               value="{{ scenario.timer_seconds if scenario else 15 }}">
+                        <div class="form-hint">От 5 до 120 секунд. При истечении времени применяется штраф -20 к лояльности.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="initial_loyalty">Начальная лояльность (%)</label>
+                        <input type="number" id="initial_loyalty" name="initial_loyalty" min="50" max="200"
+                               value="{{ scenario.initial_loyalty if scenario else 100 }}">
+                        <div class="form-hint">От 50 до 200%. При 0% клиент "бросает трубку" (Game Over).</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Client Card Section -->
+            <div class="client-card-section">
+                <h2>Карточка клиента</h2>
+                <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                    Эти данные будут доступны оператору во время диалога через кнопку "Карточка клиента".
+                </p>
+
+                <div class="client-card-fields">
+                    <div class="form-group">
+                        <label for="client_name">Имя клиента</label>
+                        <input type="text" id="client_name" name="client_name"
+                               value="{{ client_info.name if client_info else '' }}"
+                               placeholder="Например: Иван Петров">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="client_tariff">Тариф</label>
+                        <input type="text" id="client_tariff" name="client_tariff"
+                               value="{{ client_info.tariff if client_info else '' }}"
+                               placeholder="Например: Премиум">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="client_balance">Баланс</label>
+                        <input type="text" id="client_balance" name="client_balance"
+                               value="{{ client_info.balance if client_info else '' }}"
+                               placeholder="Например: 5 430 руб.">
+                    </div>
+                </div>
+
+                <div class="client-card-extra">
+                    <div class="form-group">
+                        <label for="client_extra">Дополнительные поля (JSON)</label>
+                        <textarea id="client_extra" name="client_extra"
+                                  placeholder='{"Телефон": "+7 999 123-45-67", "Дата подключения": "01.01.2023"}'>{{ client_extra if client_extra else '' }}</textarea>
+                        <div class="form-hint">Формат JSON: {"Ключ": "Значение", ...}. Оставьте пустым если не нужны.</div>
+                    </div>
+                </div>
+            </div>
+
             {% if scenario %}
             <!-- Steps Section (only for existing scenarios) -->
             <div class="steps-section">
@@ -493,8 +672,15 @@
 
                         <div class="client-message-input">
                             <div class="client-info">
-                                <input type="text" name="step_{{ step.id }}_avatar" value="{{ step.client_avatar or '👤' }}" placeholder="Аватар">
+                                <input type="text" name="step_{{ step.id }}_avatar" value="{{ step.client_avatar or '' }}" placeholder="Avatar">
                                 <input type="text" name="step_{{ step.id }}_name" value="{{ step.client_name or 'Клиент' }}" placeholder="Имя клиента">
+                                <select name="step_{{ step.id }}_mood" class="mood-select">
+                                    <option value="neutral" {% if step.initial_mood == 'neutral' %}selected{% endif %}>Нейтрально</option>
+                                    <option value="anger" {% if step.initial_mood == 'anger' %}selected{% endif %}>Гнев</option>
+                                    <option value="irritation" {% if step.initial_mood == 'irritation' %}selected{% endif %}>Раздражение</option>
+                                    <option value="satisfaction" {% if step.initial_mood == 'satisfaction' %}selected{% endif %}>Удовлетворение</option>
+                                    <option value="delight" {% if step.initial_mood == 'delight' %}selected{% endif %}>Восторг</option>
+                                </select>
                             </div>
                             <textarea name="step_{{ step.id }}_message" placeholder="Сообщение клиента...">{{ step.client_message }}</textarea>
                         </div>
@@ -504,29 +690,50 @@
 
                             {% for answer in step.answers %}
                             <div class="answer-item" data-answer-id="{{ answer.id }}">
-                                <textarea name="answer_{{ answer.id }}_text" placeholder="Текст ответа...">{{ answer.answer_text }}</textarea>
-                                <div class="answer-options">
-                                    <label>
-                                        <input type="checkbox" name="answer_{{ answer.id }}_correct"
-                                               {% if answer.is_correct %}checked{% endif %}>
-                                        Правильный
-                                    </label>
-                                    <label>
-                                        <input type="checkbox" name="answer_{{ answer.id }}_partial"
-                                               {% if answer.is_partial %}checked{% endif %}>
-                                        Частично
-                                    </label>
-                                    <label>
-                                        Баллы:
-                                        <input type="number" name="answer_{{ answer.id }}_points" min="0" max="100"
-                                               value="{{ answer.points }}">
-                                    </label>
+                                <div class="answer-main">
+                                    <textarea name="answer_{{ answer.id }}_text" placeholder="Текст ответа...">{{ answer.answer_text }}</textarea>
+                                    <div class="answer-options">
+                                        <label>
+                                            <input type="checkbox" name="answer_{{ answer.id }}_correct"
+                                                   {% if answer.is_correct %}checked{% endif %}>
+                                            Правильный
+                                        </label>
+                                        <label>
+                                            <input type="checkbox" name="answer_{{ answer.id }}_partial"
+                                                   {% if answer.is_partial %}checked{% endif %}>
+                                            Частично
+                                        </label>
+                                        <label>
+                                            Баллы:
+                                            <input type="number" name="answer_{{ answer.id }}_points" min="0" max="100"
+                                                   value="{{ answer.points }}">
+                                        </label>
+                                    </div>
+                                    <button type="button" class="btn btn-danger btn-sm" onclick="deleteAnswer({{ answer.id }})">X</button>
                                 </div>
-                                <div class="answer-feedback">
-                                    <input type="text" name="answer_{{ answer.id }}_feedback"
-                                           value="{{ answer.feedback or '' }}" placeholder="Обратная связь...">
+                                <div class="answer-extra">
+                                    <div class="form-group">
+                                        <label>Обратная связь</label>
+                                        <input type="text" name="answer_{{ answer.id }}_feedback"
+                                               value="{{ answer.feedback or '' }}" placeholder="Комментарий к ответу...">
+                                    </div>
+                                    <div class="form-group" style="max-width: 150px;">
+                                        <label>Влияние на лояльность</label>
+                                        <select name="answer_{{ answer.id }}_mood_impact" class="mood-impact-select">
+                                            <option value="10" class="positive" {% if answer.mood_impact == 10 %}selected{% endif %}>+10% (Отлично)</option>
+                                            <option value="5" class="positive" {% if answer.mood_impact == 5 %}selected{% endif %}>+5% (Хорошо)</option>
+                                            <option value="0" {% if answer.mood_impact == 0 or answer.mood_impact is none %}selected{% endif %}>0% (Нейтрально)</option>
+                                            <option value="-10" class="negative" {% if answer.mood_impact == -10 %}selected{% endif %}>-10% (Плохо)</option>
+                                            <option value="-20" class="negative" {% if answer.mood_impact == -20 %}selected{% endif %}>-20% (Очень плохо)</option>
+                                            <option value="-100" class="negative" {% if answer.mood_impact == -100 %}selected{% endif %}>-100% (Game Over)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Ссылка на Базу Знаний</label>
+                                        <input type="text" name="answer_{{ answer.id }}_knowledge_link"
+                                               value="{{ answer.knowledge_link or '' }}" placeholder="https://...">
+                                    </div>
                                 </div>
-                                <button type="button" class="btn btn-danger btn-sm" onclick="deleteAnswer({{ answer.id }})">✕</button>
                             </div>
                             {% endfor %}
 
@@ -548,6 +755,11 @@
                 <button type="submit" class="btn btn-success">
                     {% if scenario %}Сохранить изменения{% else %}Создать сценарий{% endif %}
                 </button>
+                {% if scenario %}
+                <a href="{{ url_for('admin_trainer_visual', scenario_id=scenario.id) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">
+                    🎨 Визуальный редактор
+                </a>
+                {% endif %}
                 <a href="{{ url_for('admin_trainer') }}" class="btn btn-secondary">Отмена</a>
             </div>
         </form>
@@ -566,8 +778,9 @@
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
             formData.append('client_message', 'Новое сообщение клиента');
-            formData.append('client_avatar', '👤');
+            formData.append('client_avatar', '');
             formData.append('client_name', 'Клиент');
+            formData.append('initial_mood', 'neutral');
 
             try {
                 const response = await fetch(`/admin/trainer/scenario/${scenarioId}/step/create`, {
@@ -612,6 +825,7 @@
             formData.append('csrf_token', csrfToken);
             formData.append('answer_text', 'Новый вариант ответа');
             formData.append('points', '0');
+            formData.append('mood_impact', '0');
 
             try {
                 const response = await fetch(`/admin/trainer/step/${stepId}/answer/create`, {

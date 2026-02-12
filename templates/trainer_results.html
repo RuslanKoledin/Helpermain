@@ -44,6 +44,40 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* Game Over Banner */
+        .game-over-banner {
+            background: linear-gradient(135deg, #f44336, #c62828);
+            border-radius: 16px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 30px rgba(244, 67, 54, 0.3);
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+
+        .game-over-banner .icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        .game-over-banner .title {
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .game-over-banner .subtitle {
+            font-size: 15px;
+            color: rgba(255,255,255,0.8);
+        }
+
         /* Score Card */
         .score-card {
             background: linear-gradient(180deg, var(--card), var(--card2));
@@ -133,6 +167,43 @@
             background: var(--border);
         }
 
+        /* Loyalty Badge */
+        .loyalty-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            padding: 10px 20px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+        }
+
+        .loyalty-badge.high {
+            border-color: rgba(76, 175, 80, 0.5);
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .loyalty-badge.medium {
+            border-color: rgba(255, 152, 0, 0.5);
+            background: rgba(255, 152, 0, 0.1);
+        }
+
+        .loyalty-badge.low {
+            border-color: rgba(244, 67, 54, 0.5);
+            background: rgba(244, 67, 54, 0.1);
+        }
+
+        .loyalty-badge .label {
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .loyalty-badge .value {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
         .scenario-info {
             padding-top: 20px;
             border-top: 1px solid var(--border);
@@ -141,6 +212,27 @@
         }
 
         .scenario-info strong {
+            color: var(--text);
+        }
+
+        /* Selected Topic */
+        .selected-topic {
+            margin-top: 15px;
+            padding: 12px 16px;
+            background: rgba(74, 144, 217, 0.1);
+            border: 1px solid rgba(74, 144, 217, 0.3);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .selected-topic .icon {
+            font-size: 20px;
+        }
+
+        .selected-topic .text {
+            font-size: 13px;
             color: var(--text);
         }
 
@@ -198,6 +290,10 @@
             background: rgba(244, 67, 54, 0.2);
         }
 
+        .answer-status.timeout {
+            background: rgba(156, 39, 176, 0.2);
+        }
+
         .answer-content {
             flex: 1;
         }
@@ -213,11 +309,105 @@
             color: var(--text);
         }
 
+        .answer-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
         .answer-points {
             font-size: 13px;
             font-weight: 600;
             color: var(--greenLight);
             white-space: nowrap;
+        }
+
+        .answer-loyalty {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .answer-loyalty.positive {
+            color: #4CAF50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .answer-loyalty.negative {
+            color: #f44336;
+            background: rgba(244, 67, 54, 0.1);
+        }
+
+        /* Knowledge Link */
+        .knowledge-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #4A90D9;
+            text-decoration: none;
+            margin-top: 6px;
+            padding: 4px 10px;
+            background: rgba(74, 144, 217, 0.1);
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+
+        .knowledge-link:hover {
+            background: rgba(74, 144, 217, 0.2);
+        }
+
+        /* Error Analysis Section */
+        .error-analysis {
+            background: linear-gradient(180deg, rgba(244, 67, 54, 0.05), var(--card2));
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .error-analysis .details-title {
+            color: #f44336;
+        }
+
+        .error-item {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .error-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .error-question {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .error-given {
+            font-size: 14px;
+            color: #f44336;
+            padding: 10px 14px;
+            background: rgba(244, 67, 54, 0.1);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .error-given::before {
+            content: "Ваш ответ: ";
+            font-weight: 600;
+        }
+
+        .error-feedback {
+            font-size: 13px;
+            color: var(--muted);
+            font-style: italic;
         }
 
         /* Actions */
@@ -330,11 +520,20 @@
     </style>
 </head>
 <body>
-    {% if result.grade == 'excellent' %}
+    {% if result.grade == 'excellent' and not result.is_game_over %}
     <div class="confetti-container" id="confetti"></div>
     {% endif %}
 
     <div class="container">
+        <!-- Game Over Banner -->
+        {% if result.is_game_over %}
+        <div class="game-over-banner">
+            <div class="icon">&#128542;</div>
+            <div class="title">Клиент бросил трубку</div>
+            <div class="subtitle">Уровень лояльности упал до критического значения</div>
+        </div>
+        {% endif %}
+
         <!-- Score Card -->
         <div class="score-card {{ result.grade }}">
             <div class="grade-icon">{{ grade_info.icon }}</div>
@@ -353,30 +552,93 @@
                 </div>
             </div>
 
+            {% if result.final_loyalty is not none %}
+            <div class="loyalty-badge {% if result.final_loyalty >= 80 %}high{% elif result.final_loyalty >= 40 %}medium{% else %}low{% endif %}">
+                <span class="label">Финальная лояльность:</span>
+                <span class="value">{{ result.final_loyalty }}%</span>
+            </div>
+            {% endif %}
+
             <div class="scenario-info">
                 <strong>{{ result.scenario_title }}</strong><br>
                 Уровень: {{ result.level_name }}
+                {% if result.timeout_count and result.timeout_count > 0 %}
+                <br><span style="color: var(--orange);">Пропущено ответов: {{ result.timeout_count }}</span>
+                {% endif %}
             </div>
+
+            {% if result.selected_topic_name %}
+            <div class="selected-topic">
+                <span class="icon">&#128209;</span>
+                <span class="text">Выбрана тематика: <strong>{{ result.selected_topic_name }}</strong></span>
+            </div>
+            {% endif %}
         </div>
+
+        <!-- Error Analysis (only wrong answers) -->
+        {% set wrong_answers = [] %}
+        {% for answer in answers_detail %}
+            {% if not answer.is_correct and not answer.is_partial %}
+                {% set _ = wrong_answers.append(answer) %}
+            {% endif %}
+        {% endfor %}
+
+        {% if wrong_answers %}
+        <div class="error-analysis">
+            <div class="details-title">
+                <span>&#128161;</span>
+                <span>Разбор ошибок</span>
+            </div>
+
+            {% for answer in answers_detail %}
+            {% if not answer.is_correct and not answer.is_partial %}
+            <div class="error-item">
+                <div class="error-question">Вопрос {{ answer.step_num }}</div>
+                <div class="error-given">{{ answer.answer_text }}</div>
+                {% if answer.feedback %}
+                <div class="error-feedback">{{ answer.feedback }}</div>
+                {% endif %}
+                {% if answer.knowledge_link %}
+                <a href="{{ answer.knowledge_link }}" class="knowledge-link" target="_blank">
+                    &#128218; Изучить в Базе Знаний
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
 
         <!-- Details -->
         {% if answers_detail %}
         <div class="details-section">
             <div class="details-title">
-                <span>📝</span>
+                <span>&#128221;</span>
                 <span>Детализация ответов</span>
             </div>
 
             {% for answer in answers_detail %}
             <div class="answer-item">
-                <div class="answer-status {% if answer.is_correct %}correct{% elif answer.is_partial %}partial{% else %}wrong{% endif %}">
-                    {% if answer.is_correct %}✓{% elif answer.is_partial %}~{% else %}✗{% endif %}
+                <div class="answer-status {% if answer.is_timeout %}timeout{% elif answer.is_correct %}correct{% elif answer.is_partial %}partial{% else %}wrong{% endif %}">
+                    {% if answer.is_timeout %}&#9201;{% elif answer.is_correct %}&#10003;{% elif answer.is_partial %}~{% else %}&#10007;{% endif %}
                 </div>
                 <div class="answer-content">
                     <div class="answer-question">Вопрос {{ answer.step_num }}</div>
                     <div class="answer-text">{{ answer.answer_text }}</div>
+                    <div class="answer-meta">
+                        <span class="answer-points">+{{ answer.points }}</span>
+                        {% if answer.mood_impact %}
+                        <span class="answer-loyalty {% if answer.mood_impact > 0 %}positive{% else %}negative{% endif %}">
+                            {% if answer.mood_impact > 0 %}+{% endif %}{{ answer.mood_impact }}% лояльности
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if answer.knowledge_link and not answer.is_correct %}
+                    <a href="{{ answer.knowledge_link }}" class="knowledge-link" target="_blank">
+                        &#128218; База Знаний
+                    </a>
+                    {% endif %}
                 </div>
-                <div class="answer-points">+{{ answer.points }}</div>
             </div>
             {% endfor %}
         </div>
@@ -403,7 +665,7 @@
         </div>
     </div>
 
-    {% if result.grade == 'excellent' %}
+    {% if result.grade == 'excellent' and not result.is_game_over %}
     <script>
         // Confetti animation for excellent results
         function createConfetti() {

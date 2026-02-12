@@ -1019,6 +1019,32 @@ def get_all_topics_api():
             'error': 'Внутренняя ошибка сервера'
         })
 
+@app.route('/api/admin/check-password', methods=['POST'])
+@csrf.exempt
+@rate_limit(max_requests=10, window=60)
+def api_admin_check_password():
+    """API для быстрой проверки пароля админа из модального окна"""
+    try:
+        data = request.get_json()
+        password = data.get('password', '')
+        section = data.get('section', '')
+
+        # Проверяем пароль через AdminAuth с username из .env
+        admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+        admin_data = AdminAuth.verify_admin(admin_username, password)
+
+        if admin_data:
+            # Успешная авторизация - сохраняем в сессию
+            session['admin_user'] = admin_data
+            session['admin_logged_in'] = True
+            return jsonify({'success': True})
+
+        return jsonify({'success': False, 'error': 'Неверный пароль'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/api/search_topic', methods=['POST'])
 @csrf.exempt  # Exempt from CSRF for API endpoint
 @rate_limit(max_requests=30, window=60)  # Security Fix: Add rate limiting
@@ -1316,6 +1342,9 @@ def trainer_get_step(scenario_id, step_num):
     if not step:
         return jsonify({'success': False, 'error': 'Шаг не найден'})
 
+    # Получаем информацию о сценарии для таймера и карточки клиента
+    scenario = trainer_mgr.get_scenario(scenario_id)
+
     # Не отправляем информацию о правильности ответов
     safe_answers = []
     for answer in step.get('answers', []):
@@ -1325,6 +1354,15 @@ def trainer_get_step(scenario_id, step_num):
             'order_num': answer['order_num']
         })
 
+    # Парсим карточку клиента из JSON
+    client_info = None
+    if scenario and scenario.get('client_info_json'):
+        try:
+            import json
+            client_info = json.loads(scenario['client_info_json'])
+        except:
+            pass
+
     return jsonify({
         'success': True,
         'step': {
@@ -1333,8 +1371,12 @@ def trainer_get_step(scenario_id, step_num):
             'client_message': step['client_message'],
             'client_avatar': step['client_avatar'],
             'client_name': step['client_name'],
+            'initial_mood': step.get('initial_mood', 'neutral'),
             'answers': safe_answers
-        }
+        },
+        'timer_seconds': scenario.get('timer_seconds', 15) if scenario else 15,
+        'initial_loyalty': scenario.get('initial_loyalty', 100) if scenario else 100,
+        'client_info': client_info
     })
 
 
@@ -1350,6 +1392,9 @@ def trainer_submit_answer():
         scenario_id = data.get('scenario_id')
         step_num = data.get('step_num')
         answer_id = data.get('answer_id')
+        response_time_ms = data.get('response_time_ms', 0)
+        is_timeout = data.get('is_timeout', False)
+        current_loyalty = data.get('current_loyalty', 100)
 
         if not all([scenario_id, step_num, answer_id]):
             return jsonify({'success': False, 'error': 'Неполные данные'})
@@ -1369,12 +1414,35 @@ def trainer_submit_answer():
         if not selected_answer:
             return jsonify({'success': False, 'error': 'Ответ не найден'})
 
+        # Вычисляем влияние на лояльность
+        mood_impact = selected_answer.get('mood_impact', 0)
+        if is_timeout:
+            mood_impact = -20  # Штраф за таймаут
+
+        new_loyalty = max(0, min(200, current_loyalty + mood_impact))
+        is_game_over = new_loyalty <= 0
+
+        # Определяем новое настроение на основе лояльности
+        if new_loyalty >= 80:
+            new_mood = 'delight' if new_loyalty >= 120 else 'satisfaction'
+        elif new_loyalty >= 50:
+            new_mood = 'neutral'
+        elif new_loyalty >= 25:
+            new_mood = 'irritation'
+        else:
+            new_mood = 'anger'
+
         return jsonify({
             'success': True,
             'is_correct': bool(selected_answer['is_correct']),
             'is_partial': bool(selected_answer['is_partial']),
             'points_earned': selected_answer['points'],
-            'feedback': selected_answer['feedback'] or ''
+            'feedback': selected_answer['feedback'] or '',
+            'mood_impact': mood_impact,
+            'new_mood': new_mood,
+            'new_loyalty': new_loyalty,
+            'knowledge_link': selected_answer.get('knowledge_link'),
+            'is_game_over': is_game_over
         })
 
     except Exception as e:
@@ -1396,20 +1464,33 @@ def trainer_complete():
         score = data.get('score', 0)
         max_score = data.get('max_score', 100)
         answers = data.get('answers', [])
+        final_loyalty = data.get('final_loyalty')
+        is_game_over = data.get('is_game_over', False)
+        timeout_count = data.get('timeout_count', 0)
+        selected_topic_id = data.get('selected_topic_id')
+        selected_topic_name = data.get('selected_topic_name')
 
         if not scenario_id:
             return jsonify({'success': False, 'error': 'Не указан сценарий'})
 
         user_id = session['user_info'].get('username', 'anonymous')
 
-        # Сохраняем результат
-        result = trainer_mgr.save_result(user_id, scenario_id, score, max_score, answers)
+        # Сохраняем результат с новыми полями геймификации
+        result = trainer_mgr.save_result(
+            user_id, scenario_id, score, max_score, answers,
+            final_loyalty=final_loyalty,
+            is_game_over=is_game_over,
+            timeout_count=timeout_count,
+            selected_topic_id=selected_topic_id,
+            selected_topic_name=selected_topic_name
+        )
 
         return jsonify({
             'success': True,
             'result_id': result['id'],
             'percent': result['percent'],
-            'grade': result['grade']
+            'grade': result['grade'],
+            'is_game_over': is_game_over
         })
 
     except Exception as e:
@@ -1451,7 +1532,11 @@ def trainer_results(result_id):
                             'answer_text': answer['answer_text'],
                             'points': ans['points'],
                             'is_correct': ans['is_correct'],
-                            'is_partial': answer.get('is_partial', False)
+                            'is_partial': answer.get('is_partial', False),
+                            'is_timeout': ans.get('is_timeout', False),
+                            'mood_impact': ans.get('mood_impact', 0),
+                            'knowledge_link': ans.get('knowledge_link') or answer.get('knowledge_link'),
+                            'feedback': answer.get('feedback', '')
                         })
                         break
 
@@ -1558,6 +1643,27 @@ def admin_trainer_edit(scenario_id):
     categories = trainer_mgr.get_all_categories()
 
     if request.method == 'POST':
+        # Собираем карточку клиента в JSON
+        client_info = {}
+        if request.form.get('client_name'):
+            client_info['name'] = request.form.get('client_name', '').strip()
+        if request.form.get('client_tariff'):
+            client_info['tariff'] = request.form.get('client_tariff', '').strip()
+        if request.form.get('client_balance'):
+            client_info['balance'] = request.form.get('client_balance', '').strip()
+
+        # Парсим дополнительные поля JSON
+        client_extra = request.form.get('client_extra', '').strip()
+        if client_extra:
+            try:
+                import json
+                extra_data = json.loads(client_extra)
+                client_info.update(extra_data)
+            except:
+                pass
+
+        client_info_json = json.dumps(client_info, ensure_ascii=False) if client_info else None
+
         # Обновляем основную информацию сценария
         data = {
             'level_id': request.form.get('level_id', type=int),
@@ -1567,7 +1673,10 @@ def admin_trainer_edit(scenario_id):
             'estimated_time': request.form.get('estimated_time', 5, type=int),
             'total_points': request.form.get('total_points', 100, type=int),
             'is_active': 1 if request.form.get('is_active') else 0,
-            'order_num': request.form.get('order_num', 0, type=int)
+            'order_num': request.form.get('order_num', 0, type=int),
+            'timer_seconds': request.form.get('timer_seconds', 15, type=int),
+            'initial_loyalty': request.form.get('initial_loyalty', 100, type=int),
+            'client_info_json': client_info_json
         }
 
         result = trainer_mgr.update_scenario(scenario_id, data)
@@ -1580,8 +1689,9 @@ def admin_trainer_edit(scenario_id):
                     step_id = int(key.split('_')[1])
                     trainer_mgr.update_step(step_id, {
                         'client_message': request.form.get(key, '').strip(),
-                        'client_avatar': request.form.get(f'step_{step_id}_avatar', '👤'),
-                        'client_name': request.form.get(f'step_{step_id}_name', 'Клиент')
+                        'client_avatar': request.form.get(f'step_{step_id}_avatar', ''),
+                        'client_name': request.form.get(f'step_{step_id}_name', 'Клиент'),
+                        'initial_mood': request.form.get(f'step_{step_id}_mood', 'neutral')
                     })
 
                 # Обновление ответов
@@ -1592,7 +1702,9 @@ def admin_trainer_edit(scenario_id):
                         'is_correct': 1 if request.form.get(f'answer_{answer_id}_correct') else 0,
                         'is_partial': 1 if request.form.get(f'answer_{answer_id}_partial') else 0,
                         'points': request.form.get(f'answer_{answer_id}_points', 0, type=int),
-                        'feedback': request.form.get(f'answer_{answer_id}_feedback', '').strip()
+                        'feedback': request.form.get(f'answer_{answer_id}_feedback', '').strip(),
+                        'mood_impact': request.form.get(f'answer_{answer_id}_mood_impact', 0, type=int),
+                        'knowledge_link': request.form.get(f'answer_{answer_id}_knowledge_link', '').strip() or None
                     })
 
             flash('Сценарий успешно обновлен!')
@@ -1607,11 +1719,28 @@ def admin_trainer_edit(scenario_id):
     for step in steps:
         step['answers'] = trainer_mgr.get_step_answers(step['id'])
 
+    # Парсим карточку клиента
+    client_info = None
+    client_extra = None
+    if scenario.get('client_info_json'):
+        try:
+            import json
+            client_info = json.loads(scenario['client_info_json'])
+            # Отделяем стандартные поля от дополнительных
+            standard_fields = ['name', 'tariff', 'balance']
+            extra_fields = {k: v for k, v in client_info.items() if k not in standard_fields}
+            if extra_fields:
+                client_extra = json.dumps(extra_fields, ensure_ascii=False, indent=2)
+        except:
+            pass
+
     return render_template('admin_trainer_edit.html',
                          scenario=scenario,
                          levels=levels,
                          categories=categories,
-                         steps=steps)
+                         steps=steps,
+                         client_info=client_info,
+                         client_extra=client_extra)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/delete', methods=['POST'])
@@ -1696,6 +1825,232 @@ def admin_trainer_delete_answer(answer_id):
         flash(f'Ошибка: {result.get("error")}')
 
     return redirect(request.referrer or url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/visual')
+@AdminAuth.login_required
+def admin_trainer_visual(scenario_id):
+    """Визуальный редактор сценария (No-Code)"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    if not scenario:
+        flash('Сценарий не найден')
+        return redirect(url_for('admin_trainer'))
+
+    # Получаем шаги с ответами для инициализации визуального редактора
+    steps = trainer_mgr.get_scenario_steps(scenario_id)
+    for step in steps:
+        step['answers'] = trainer_mgr.get_step_answers(step['id'])
+
+    return render_template('admin_trainer_visual.html',
+                         scenario=scenario,
+                         steps=steps)
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/visual/save', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_visual_save(scenario_id):
+    """Сохранение визуальной структуры сценария"""
+    import json
+
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    if not scenario:
+        return jsonify({'success': False, 'error': 'Сценарий не найден'})
+
+    try:
+        data = request.get_json()
+        nodes = data.get('nodes', [])
+        connections = data.get('connections', [])
+
+        # Очищаем существующие шаги
+        for step in trainer_mgr.get_scenario_steps(scenario_id):
+            trainer_mgr.delete_step(step['id'])
+
+        # Создаем словарь для маппинга временных ID узлов к реальным ID шагов
+        node_to_step = {}
+
+        # Находим все узлы типа "client" (реплики клиента) - это будут шаги
+        client_nodes = [n for n in nodes if n.get('type') == 'client']
+
+        # Сортируем узлы по позиции Y для определения порядка
+        client_nodes.sort(key=lambda n: n.get('y', 0))
+
+        for idx, node in enumerate(client_nodes):
+            step_data = {
+                'client_message': node.get('label', 'Сообщение клиента'),
+                'client_avatar': '👤',
+                'client_name': node.get('clientName', 'Клиент'),
+                'initial_mood': node.get('mood', 'neutral'),
+                'step_number': idx + 1
+            }
+
+            result = trainer_mgr.create_step(scenario_id, step_data)
+            if result['success']:
+                step_id = result['step_id']
+                node_to_step[node['id']] = step_id
+
+                # Создаём ответы из поля answers узла client
+                node_answers = node.get('answers', [])
+                for answer in node_answers:
+                    answer_data = {
+                        'answer_text': answer.get('text', 'Ответ оператора'),
+                        'is_correct': 1 if answer.get('isCorrect', False) else 0,
+                        'is_partial': 1 if answer.get('isPartial', False) else 0,
+                        'points': answer.get('points', 0),
+                        'feedback': answer.get('feedback', ''),
+                        'mood_impact': answer.get('moodImpact', 0),
+                        'knowledge_link': answer.get('knowledgeLink', '')
+                    }
+                    trainer_mgr.create_answer(step_id, answer_data)
+
+        # Также обрабатываем отдельные узлы типа "answer" (для обратной совместимости)
+        answer_nodes = [n for n in nodes if n.get('type') == 'answer']
+
+        for answer_node in answer_nodes:
+            # Находим связь от клиентского узла к этому ответу
+            parent_connection = next(
+                (c for c in connections if c.get('toId') == answer_node['id']),
+                None
+            )
+
+            if parent_connection:
+                parent_node_id = parent_connection.get('fromId')
+                step_id = node_to_step.get(parent_node_id)
+
+                if step_id:
+                    is_correct = answer_node.get('isCorrect', False)
+                    mood_impact = answer_node.get('moodImpact', 0)
+
+                    answer_data = {
+                        'answer_text': answer_node.get('label', 'Ответ оператора'),
+                        'is_correct': 1 if is_correct else 0,
+                        'is_partial': 0,
+                        'points': 10 if is_correct else 0,
+                        'feedback': answer_node.get('feedback', ''),
+                        'mood_impact': mood_impact,
+                        'knowledge_link': answer_node.get('knowledgeLink', '')
+                    }
+
+                    trainer_mgr.create_answer(step_id, answer_data)
+
+        # Сохраняем визуальную структуру для последующего восстановления
+        visual_data = {
+            'nodes': nodes,
+            'connections': connections
+        }
+
+        # Сохраняем визуальные данные в отдельное поле сценария
+        cursor = trainer_mgr.conn.cursor()
+
+        # Проверяем существует ли колонка visual_data
+        cursor.execute("PRAGMA table_info(trainer_scenarios)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if 'visual_data' not in columns:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN visual_data TEXT")
+            trainer_mgr.conn.commit()
+
+        cursor.execute(
+            "UPDATE trainer_scenarios SET visual_data = ? WHERE id = ?",
+            (json.dumps(visual_data, ensure_ascii=False), scenario_id)
+        )
+        trainer_mgr.conn.commit()
+
+        return jsonify({'success': True, 'message': 'Сценарий сохранен'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/visual/load')
+@AdminAuth.login_required
+def admin_trainer_visual_load(scenario_id):
+    """Загрузка визуальной структуры сценария с синхронизацией из БД"""
+    import json
+
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    if not scenario:
+        return jsonify({'success': False, 'error': 'Сценарий не найден'})
+
+    try:
+        # Получаем сохраненные позиции узлов (если есть)
+        cursor = trainer_mgr.conn.cursor()
+        cursor.execute("PRAGMA table_info(trainer_scenarios)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        saved_positions = {}  # id узла -> {x, y}
+        saved_connections = []
+
+        if 'visual_data' in columns:
+            cursor.execute("SELECT visual_data FROM trainer_scenarios WHERE id = ?", (scenario_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                visual_data = json.loads(row[0])
+                # Сохраняем только позиции узлов
+                for node in visual_data.get('nodes', []):
+                    saved_positions[node.get('id')] = {'x': node.get('x', 200), 'y': node.get('y', 100)}
+                saved_connections = visual_data.get('connections', [])
+
+        # ВСЕГДА генерируем узлы из актуальных данных БД
+        steps = trainer_mgr.get_scenario_steps(scenario_id)
+        nodes = []
+        connections = []
+
+        y_offset = 100
+        for step in steps:
+            step_id = f"step_{step['id']}"
+
+            # Используем сохраненную позицию или дефолтную
+            pos = saved_positions.get(step_id, {'x': 200, 'y': y_offset})
+
+            # Узел реплики клиента с полными данными
+            nodes.append({
+                'id': step_id,
+                'type': 'client',
+                'x': pos['x'],
+                'y': pos['y'],
+                'label': step.get('client_message', ''),
+                'mood': step.get('initial_mood', 'neutral'),
+                'stepId': step['id'],
+                'stepNum': step.get('step_num', 1),
+                'clientName': step.get('client_name', 'Клиент'),
+                'answers': []  # Будет заполнено ниже
+            })
+
+            # Узлы ответов
+            answers = trainer_mgr.get_step_answers(step['id'])
+            answer_x = pos['x'] + 300
+            answer_y_offset = 0
+            node_answers = []
+
+            for answer in answers:
+                answer_id = f"answer_{answer['id']}"
+                ans_pos = saved_positions.get(answer_id, {'x': answer_x, 'y': pos['y'] + answer_y_offset})
+
+                # Добавляем ответ в список ответов узла клиента
+                node_answers.append({
+                    'id': answer['id'],
+                    'text': answer.get('answer_text', ''),
+                    'isCorrect': bool(answer.get('is_correct', 0)),
+                    'isPartial': bool(answer.get('is_partial', 0)),
+                    'points': answer.get('points', 0),
+                    'moodImpact': answer.get('mood_impact', 0)
+                })
+
+                answer_y_offset += 80
+
+            # Обновляем ответы в узле клиента
+            nodes[-1]['answers'] = node_answers
+
+            y_offset += 200
+
+        return jsonify({
+            'success': True,
+            'nodes': nodes,
+            'connections': saved_connections if saved_connections else []
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/admin/trainer/stats')
