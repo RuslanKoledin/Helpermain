@@ -21,6 +21,14 @@ class ADAuth:
         self.base_dn = os.getenv('AD_BASE_DN', 'DC=mbank,DC=local')
         self.use_ssl = os.getenv('AD_USE_SSL', 'false').lower() == 'true'
         self.admin_group = os.getenv('AD_ADMIN_GROUP', '')
+        self.dev_mode = os.getenv('DEV_MODE', 'false').lower() == 'true'
+
+        # Списки администраторов по логинам
+        admins_str = os.getenv('AD_ADMINS', '')
+        super_admins_str = os.getenv('AD_SUPER_ADMINS', '')
+
+        self.admin_logins = set(u.strip().lower() for u in admins_str.split(',') if u.strip())
+        self.super_admin_logins = set(u.strip().lower() for u in super_admins_str.split(',') if u.strip())
 
     def verify_credentials(self, username: str, password: str) -> Optional[Dict[str, Any]]:
         """
@@ -96,8 +104,14 @@ class ADAuth:
                 'role': 'editor'  # По умолчанию редактор
             }
 
-            # Проверяем принадлежность к группе администраторов (если указана)
-            if self.admin_group and hasattr(entry, 'memberOf'):
+            # Проверка роли по логину (ПРИОРИТЕТ 1)
+            clean_username = user_info['username'].lower()
+            if clean_username in self.super_admin_logins:
+                user_info['role'] = 'super_admin'
+            elif clean_username in self.admin_logins:
+                user_info['role'] = 'admin'
+            # Проверяем принадлежность к группе администраторов (ПРИОРИТЕТ 2)
+            elif self.admin_group and hasattr(entry, 'memberOf'):
                 member_of = [str(group) for group in entry.memberOf]
                 if self.admin_group in member_of:
                     user_info['role'] = 'super_admin'

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ level.name }} - Тренажер</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenHover: #009448;
+            --greenLight: #00d4aa;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            min-height: 100vh;
+            padding: 24px;
+            color: var(--text);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            animation: fadeIn 0.4s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .back-link {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            color: var(--text);
+            background: rgba(0, 166, 81, 0.15);
+            border: 1px solid rgba(0, 166, 81, 0.3);
+            padding: 10px 18px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .back-link:hover {
+            background: rgba(0, 166, 81, 0.25);
+            border-color: rgba(0, 166, 81, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        h1 {
+            color: var(--text);
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        /* Categories Filter */
+        .categories-filter {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        .category-btn {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--card);
+            color: var(--muted);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .category-btn:hover, .category-btn.active {
+            border-color: var(--green);
+            color: var(--greenLight);
+            background: rgba(0, 166, 81, 0.1);
+        }
+
+        .category-btn.active {
+            background: rgba(0, 166, 81, 0.2);
+        }
+
+        /* Progress Bar */
+        .level-progress {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .progress-text {
+            font-size: 14px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .progress-text strong {
+            color: var(--text);
+        }
+
+        .progress-bar-container {
+            flex: 1;
+            background: var(--border);
+            border-radius: 6px;
+            height: 6px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, var(--green), var(--greenLight));
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.5s ease;
+        }
+
+        .progress-percent {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--greenLight);
+            white-space: nowrap;
+        }
+
+        /* Scenarios List */
+        .scenarios-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .scenario-card {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px 24px;
+            text-decoration: none;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: all 0.2s ease;
+        }
+
+        .scenario-card:hover {
+            transform: translateX(4px);
+            border-color: rgba(0, 166, 81, 0.5);
+            box-shadow: 0 8px 24px rgba(0, 166, 81, 0.1);
+        }
+
+        .scenario-number {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: rgba(0, 166, 81, 0.1);
+            border: 1px solid rgba(0, 166, 81, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--greenLight);
+            flex-shrink: 0;
+        }
+
+        .scenario-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .scenario-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+
+        .scenario-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .scenario-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .scenario-status {
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .scenario-status.not-started {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--muted);
+        }
+
+        .scenario-status.completed {
+            background: rgba(0, 166, 81, 0.15);
+            color: var(--greenLight);
+        }
+
+        .scenario-status.excellent {
+            background: rgba(76, 175, 80, 0.2);
+            color: #81C784;
+        }
+
+        .scenario-status.good {
+            background: rgba(139, 195, 74, 0.2);
+            color: #AED581;
+        }
+
+        .scenario-status.partial {
+            background: rgba(255, 152, 0, 0.2);
+            color: #FFB74D;
+        }
+
+        .scenario-status.fail {
+            background: rgba(244, 67, 54, 0.2);
+            color: #E57373;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--muted);
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 16px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
+
+            .scenario-card {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+
+            .scenario-number {
+                width: 36px;
+                height: 36px;
+                font-size: 14px;
+            }
+
+            .scenario-status {
+                align-self: flex-start;
+            }
+
+            .level-progress {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            .progress-text, .progress-percent {
+                text-align: center;
+            }
+
+            .back-link {
+                top: 16px;
+                left: 16px;
+                font-size: 12px;
+                padding: 8px 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="{{ url_for('trainer_menu') }}" class="back-link">
+        &larr; К уровням
+    </a>
+
+    <div class="container">
+        <div class="header">
+            <div class="header-icon">{{ level.icon }}</div>
+            <h1>{{ level.name }}</h1>
+            <p class="subtitle">{{ level.description }}</p>
+        </div>
+
+        <!-- Прогресс уровня -->
+        <div class="level-progress">
+            <span class="progress-text">Пройдено: <strong>{{ completed_count }}/{{ total_count }}</strong></span>
+            <div class="progress-bar-container">
+                {% set percent = (completed_count / total_count * 100) if total_count > 0 else 0 %}
+                <div class="progress-bar" style="width: {{ percent }}%"></div>
+            </div>
+            <span class="progress-percent">{{ avg_percent }}%</span>
+        </div>
+
+        <!-- Фильтр по категориям -->
+        {% if categories %}
+        <div class="categories-filter">
+            <a href="{{ url_for('trainer_level', level_code=level.code) }}"
+               class="category-btn {% if not current_category %}active{% endif %}">
+                Все
+            </a>
+            {% for category in categories %}
+            <a href="{{ url_for('trainer_level', level_code=level.code, category=category.id) }}"
+               class="category-btn {% if current_category == category.id %}active{% endif %}">
+                {{ category.icon }} {{ category.name }}
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Список сценариев -->
+        {% if scenarios %}
+        <div class="scenarios-list">
+            {% for scenario in scenarios %}
+                {% set user_result = user_results.get(scenario.id) %}
+                <a href="{{ url_for('trainer_play', scenario_id=scenario.id) }}" class="scenario-card">
+                    <div class="scenario-number">{{ loop.index }}</div>
+                    <div class="scenario-info">
+                        <div class="scenario-title">{{ scenario.title }}</div>
+                        <div class="scenario-meta">
+                            {% if scenario.category_name %}
+                            <span class="scenario-meta-item">{{ scenario.category_icon }} {{ scenario.category_name }}</span>
+                            {% endif %}
+                            <span class="scenario-meta-item">⏱ {{ scenario.estimated_time }} мин</span>
+                            <span class="scenario-meta-item">💎 {{ scenario.total_points }} баллов</span>
+                        </div>
+                    </div>
+                    {% if user_result %}
+                        <div class="scenario-status {{ user_result.grade }}">
+                            {{ user_result.percent }}%
+                        </div>
+                    {% else %}
+                        <div class="scenario-status not-started">
+                            Начать
+                        </div>
+                    {% endif %}
+                </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <p>Сценарии в разработке</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

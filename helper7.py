@@ -21,6 +21,7 @@ from flask_wtf.csrf import CSRFProtect
 from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES
 from topics_manager import TopicsManager
 from stats_manager import StatsManager
+from trainer_manager import TrainerManager
 
 # ============================================
 # RATE LIMITING
@@ -170,6 +171,9 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 # Инициализация TopicsManager
 tm = TopicsManager("topics.db")
+
+# Инициализация TrainerManager
+trainer_mgr = TrainerManager("topics.db")
 
 # TODO: СТАТИСТИКА В РАЗРАБОТКЕ
 # Инициализация StatsManager для сбора аналитики
@@ -754,14 +758,27 @@ def select_problem(problem_id):
             print(f"[select_problem] Redirecting to other_problem (cisco) for problem_id: {problem_id}")
             return redirect(url_for('other_problem'))
 
-        # --- Обрабатываем фото ---
+        # --- Обрабатываем фото (показываем все шаги, даже без фото) ---
         photo_urls_with_captions = []
         for photo in problem_data.get('photos', []):
-            url = get_file_url(photo.get('id'))
+            photo_id = photo.get('id')
+            url = get_file_url(photo_id) if photo_id else None
             caption = photo.get('caption', '')
             safe_caption = m_escape(str(caption).strip()[:300])
-            # Сохраняем шаг даже если фото отсутствует
+            # Добавляем ВСЕ шаги, даже если фото отсутствует (url = None)
             photo_urls_with_captions.append({'url': url, 'caption': safe_caption})
+
+        # --- Обрабатываем видео если есть ---
+        video_data = None
+        if 'video' in problem_data and problem_data['video'] is not None:
+            video_id = problem_data['video'].get('id')
+            if video_id:
+                video_url = get_file_url(video_id)
+                if video_url:
+                    video_data = {
+                        'url': video_url,
+                        'caption': m_escape(str(problem_data['video'].get('caption', 'Видео-инструкция')).strip()[:300])
+                    }
 
         # --- Экранируем и передаём безопасные данные ---
         safe_manual_data = deep_escape(problem_data)
@@ -772,7 +789,8 @@ def select_problem(problem_id):
             'manual.html',
             manual=safe_manual_data,
             manual_title=manual_title,
-            photo_urls_with_captions=safe_photos
+            photo_urls_with_captions=safe_photos,
+            video_data=video_data
         )
 
 @app.route('/show_manual/<string:subproblem_id>')
@@ -805,6 +823,11 @@ def show_manual(subproblem_id):
     # Обрезаем лишние символы и экранируем HTML
     manual_title = m_escape(str(raw_manual_title).strip()[:200])  # ограничим длину, защита от XSS
     session['problem_title'] = manual_title
+
+    # Сбрасываем флаги отправки при выборе нового мануала
+    session.pop('ticket_sent', None)
+    session.pop('solved_sent', None)
+    session.modified = True
     session['current_subproblem_id'] = subproblem_id  # Сохраняем для возврата после опроса по видео
 
     # Проверяем, нужна ли форма для добавления скриншотов
@@ -826,7 +849,7 @@ def show_manual(subproblem_id):
 
     # Получаем видео если есть
     video_data = None
-    if 'video' in subproblem_data:
+    if 'video' in subproblem_data and subproblem_data['video'] is not None:
         video_id = subproblem_data['video'].get('id')
         if video_id:
             video_url = get_file_url(video_id)
@@ -959,8 +982,18 @@ def other_problem():
 @app.route('/send_final_ticket')
 def send_final_ticket():
     try:
+        # Проверяем флаг - была ли уже отправлена заявка
+        if session.get('ticket_sent'):
+            # Заявка уже отправлена, просто показываем страницу
+            return render_template('ticket_sent.html')
+
+        # Отправляем заявку только если флаг не установлен
         problem_description = session.get('problem_title', 'Неизвестная проблема')
         send_ticket(problem_description)
+
+        # Устанавливаем флаг что заявка отправлена
+        session['ticket_sent'] = True
+        session.modified = True
 
         return render_template('ticket_sent.html')
     except Exception as e:
@@ -971,15 +1004,31 @@ def send_final_ticket():
 @app.route('/finish_solved')
 def finish_solved():
     try:
+        # Проверяем флаг - было ли уже отправлено уведомление
+        if session.get('solved_sent'):
+            # Уведомление уже отправлено, редирект на страницу успеха
+            return redirect(url_for('show_success'))
+
+        # Отправляем уведомление только если флаг не установлен
         problem_description = session.get('problem_title', 'Неизвестная проблема')
         send_solved_ticket(problem_description)
 
-        # вместо очистки сессии показываем страницу успеха
-        return render_template('success.html')  # там будет кнопка "На главную"
+        # Устанавливаем флаг что уведомление отправлено
+        session['solved_sent'] = True
+        session.modified = True
+
+        # Редирект на страницу успеха (POST-Redirect-GET pattern)
+        return redirect(url_for('show_success'))
 
     except Exception as e:
         print(f"Ошибка при отправке сообщения: {e}")
         return "Произошла ошибка, но сессия сохранена."
+
+
+@app.route('/success')
+def show_success():
+    """Страница успешного решения проблемы"""
+    return render_template('success.html')
 
 
 # --- Обновлённый маршрут finish_unsolved с логированием ---
@@ -1003,6 +1052,11 @@ def finish_unsolved():
 
 @app.route('/go_home')
 def go_home():
+    # Сбрасываем флаги отправки при возврате на главную
+    session.pop('ticket_sent', None)
+    session.pop('solved_sent', None)
+    session.modified = True
+
     # Security: don't log session content
     if 'user_info' in session:
         return redirect(url_for('show_problems'))
@@ -1048,6 +1102,32 @@ def get_all_topics_api():
             'success': False,
             'error': 'Внутренняя ошибка сервера'
         })
+
+@app.route('/api/admin/check-password', methods=['POST'])
+@csrf.exempt
+@rate_limit(max_requests=10, window=60)
+def api_admin_check_password():
+    """API для быстрой проверки пароля админа из модального окна"""
+    try:
+        data = request.get_json()
+        password = data.get('password', '')
+        section = data.get('section', '')
+
+        # Проверяем пароль через AdminAuth с username из .env
+        admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+        admin_data = AdminAuth.verify_admin(admin_username, password)
+
+        if admin_data:
+            # Успешная авторизация - сохраняем в сессию
+            session['admin_user'] = admin_data
+            session['admin_logged_in'] = True
+            return jsonify({'success': True})
+
+        return jsonify({'success': False, 'error': 'Неверный пароль'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 
 @app.route('/api/search_topic', methods=['POST'])
 @csrf.exempt  # Exempt from CSRF for API endpoint
@@ -1117,14 +1197,11 @@ def search_topic_api():
 
         # Фильтруем результаты по каналу если он выбран
         if channel:
-            # Умная фильтрация: ищем по словам, а не по полной строке
+            # Точная фильтрация: только тематики из выбранного канала
             filtered_results = []
-            channel_words = set(channel.lower().split())
-
             for r in results:
-                r_channel_words = set(r['channel'].lower().split())
-                # Проверяем, есть ли общие слова
-                if channel_words & r_channel_words:  # пересечение множеств
+                # Точное совпадение названия канала
+                if r['channel'].strip() == channel.strip():
                     filtered_results.append(r)
 
             results = filtered_results
@@ -1246,41 +1323,934 @@ def handle_channel_messages(message):
         print(f"Ошибка при обработке сообщения в канале: {e}")
 
 # ============================================
+# ТРЕНАЖЕР ОПЕРАТОРОВ
+# ============================================
+
+@app.route('/trainer')
+def trainer_menu():
+    """Главная страница тренажера с уровнями"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    user_id = session['user_info'].get('username', 'anonymous')
+    levels = trainer_mgr.get_all_levels()
+    progress = trainer_mgr.get_user_progress(user_id)
+
+    return render_template('trainer_menu.html', levels=levels, progress=progress)
+
+
+@app.route('/trainer/level/<level_code>')
+def trainer_level(level_code):
+    """Список сценариев уровня"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    user_id = session['user_info'].get('username', 'anonymous')
+    level = trainer_mgr.get_level_by_code(level_code)
+
+    if not level:
+        flash('Уровень не найден')
+        return redirect(url_for('trainer_menu'))
+
+    # Проверяем доступ к уровню
+    if not trainer_mgr.check_level_unlocked(user_id, level_code):
+        flash('Этот уровень ещё заблокирован')
+        return redirect(url_for('trainer_menu'))
+
+    # Получаем фильтр по категории
+    category_id = request.args.get('category', type=int)
+
+    scenarios = trainer_mgr.get_scenarios_by_level(level_code, category_id)
+    categories = trainer_mgr.get_all_categories()
+
+    # Получаем результаты пользователя для каждого сценария
+    user_results = {}
+    for scenario in scenarios:
+        result = trainer_mgr.get_scenario_user_result(user_id, scenario['id'])
+        if result:
+            user_results[scenario['id']] = result
+
+    # Считаем статистику уровня
+    completed_count = len(user_results)
+    total_count = len(scenarios)
+    avg_percent = 0
+    if user_results:
+        avg_percent = round(sum(r['percent'] for r in user_results.values()) / len(user_results), 1)
+
+    return render_template('trainer_scenarios.html',
+                         level=level,
+                         scenarios=scenarios,
+                         categories=categories,
+                         current_category=category_id,
+                         user_results=user_results,
+                         completed_count=completed_count,
+                         total_count=total_count,
+                         avg_percent=avg_percent)
+
+
+@app.route('/trainer/play/<int:scenario_id>')
+def trainer_play(scenario_id):
+    """Страница прохождения сценария"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    user_id = session['user_info'].get('username', 'anonymous')
+    scenario = trainer_mgr.get_scenario(scenario_id)
+
+    if not scenario:
+        flash('Сценарий не найден')
+        return redirect(url_for('trainer_menu'))
+
+    # Проверяем доступ к уровню
+    if not trainer_mgr.check_level_unlocked(user_id, scenario['level_code']):
+        flash('Этот уровень ещё заблокирован')
+        return redirect(url_for('trainer_menu'))
+
+    total_steps = trainer_mgr.get_steps_count(scenario_id)
+
+    if total_steps == 0:
+        flash('В этом сценарии пока нет шагов')
+        return redirect(url_for('trainer_level', level_code=scenario['level_code']))
+
+    return render_template('trainer_play.html',
+                         scenario=scenario,
+                         total_steps=total_steps)
+
+
+@app.route('/api/trainer/step/<int:scenario_id>/<int:step_num>')
+@rate_limit(max_requests=120, window=60)
+def trainer_get_step(scenario_id, step_num):
+    """API: получить шаг сценария"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    step = trainer_mgr.get_step_by_num(scenario_id, step_num)
+
+    if not step:
+        return jsonify({'success': False, 'error': 'Шаг не найден'})
+
+    # Получаем информацию о сценарии для таймера и карточки клиента
+    scenario = trainer_mgr.get_scenario(scenario_id)
+
+    # Не отправляем информацию о правильности ответов
+    safe_answers = []
+    for answer in step.get('answers', []):
+        safe_answers.append({
+            'id': answer['id'],
+            'answer_text': answer['answer_text'],
+            'order_num': answer['order_num']
+        })
+
+    # Парсим карточку клиента из JSON
+    client_info = None
+    if scenario and scenario.get('client_info_json'):
+        try:
+            import json
+            client_info = json.loads(scenario['client_info_json'])
+        except:
+            pass
+
+    return jsonify({
+        'success': True,
+        'step': {
+            'id': step['id'],
+            'step_num': step['step_num'],
+            'client_message': step['client_message'],
+            'client_avatar': step['client_avatar'],
+            'client_name': step['client_name'],
+            'initial_mood': step.get('initial_mood', 'neutral'),
+            'answers': safe_answers
+        },
+        'timer_seconds': scenario.get('timer_seconds', 15) if scenario else 15,
+        'initial_loyalty': scenario.get('initial_loyalty', 100) if scenario else 100,
+        'client_info': client_info
+    })
+
+
+@app.route('/api/trainer/answer', methods=['POST'])
+@rate_limit(max_requests=60, window=60)
+def trainer_submit_answer():
+    """API: отправить ответ"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    try:
+        data = request.get_json()
+        scenario_id = data.get('scenario_id')
+        step_num = data.get('step_num')
+        answer_id = data.get('answer_id')
+        response_time_ms = data.get('response_time_ms', 0)
+        is_timeout = data.get('is_timeout', False)
+        current_loyalty = data.get('current_loyalty', 100)
+
+        if not all([scenario_id, step_num, answer_id]):
+            return jsonify({'success': False, 'error': 'Неполные данные'})
+
+        # Получаем шаг и ответы
+        step = trainer_mgr.get_step_by_num(scenario_id, step_num)
+        if not step:
+            return jsonify({'success': False, 'error': 'Шаг не найден'})
+
+        # Находим выбранный ответ
+        selected_answer = None
+        for answer in step.get('answers', []):
+            if answer['id'] == answer_id:
+                selected_answer = answer
+                break
+
+        if not selected_answer:
+            return jsonify({'success': False, 'error': 'Ответ не найден'})
+
+        # Вычисляем влияние на лояльность
+        mood_impact = selected_answer.get('mood_impact', 0)
+        if is_timeout:
+            mood_impact = -20  # Штраф за таймаут
+
+        new_loyalty = max(0, min(200, current_loyalty + mood_impact))
+        is_game_over = new_loyalty <= 0
+
+        # Определяем новое настроение на основе лояльности
+        if new_loyalty >= 80:
+            new_mood = 'delight' if new_loyalty >= 120 else 'satisfaction'
+        elif new_loyalty >= 50:
+            new_mood = 'neutral'
+        elif new_loyalty >= 25:
+            new_mood = 'irritation'
+        else:
+            new_mood = 'anger'
+
+        return jsonify({
+            'success': True,
+            'is_correct': bool(selected_answer['is_correct']),
+            'is_partial': bool(selected_answer['is_partial']),
+            'points_earned': selected_answer['points'],
+            'feedback': selected_answer['feedback'] or '',
+            'mood_impact': mood_impact,
+            'new_mood': new_mood,
+            'new_loyalty': new_loyalty,
+            'knowledge_link': selected_answer.get('knowledge_link'),
+            'is_game_over': is_game_over
+        })
+
+    except Exception as e:
+        print(f"[trainer_submit_answer] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
+
+
+@app.route('/api/trainer/complete', methods=['POST'])
+@rate_limit(max_requests=30, window=60)
+def trainer_complete():
+    """API: завершить сценарий"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return jsonify({'success': False, 'error': 'Не авторизован'}), 401
+
+    try:
+        data = request.get_json()
+        scenario_id = data.get('scenario_id')
+        score = data.get('score', 0)
+        max_score = data.get('max_score', 100)
+        answers = data.get('answers', [])
+        final_loyalty = data.get('final_loyalty')
+        is_game_over = data.get('is_game_over', False)
+        timeout_count = data.get('timeout_count', 0)
+        selected_topic_id = data.get('selected_topic_id')
+        selected_topic_name = data.get('selected_topic_name')
+
+        if not scenario_id:
+            return jsonify({'success': False, 'error': 'Не указан сценарий'})
+
+        user_id = session['user_info'].get('username', 'anonymous')
+
+        # Сохраняем результат с новыми полями геймификации
+        result = trainer_mgr.save_result(
+            user_id, scenario_id, score, max_score, answers,
+            final_loyalty=final_loyalty,
+            is_game_over=is_game_over,
+            timeout_count=timeout_count,
+            selected_topic_id=selected_topic_id,
+            selected_topic_name=selected_topic_name
+        )
+
+        return jsonify({
+            'success': True,
+            'result_id': result['id'],
+            'percent': result['percent'],
+            'grade': result['grade'],
+            'is_game_over': is_game_over
+        })
+
+    except Exception as e:
+        print(f"[trainer_complete] Ошибка: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
+
+
+@app.route('/trainer/results/<int:result_id>')
+def trainer_results(result_id):
+    """Страница результатов прохождения"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    result = trainer_mgr.get_result_by_id(result_id)
+
+    if not result:
+        flash('Результат не найден')
+        return redirect(url_for('trainer_menu'))
+
+    # Проверяем что это результат текущего пользователя
+    user_id = session['user_info'].get('username', 'anonymous')
+    if result['user_id'] != user_id:
+        flash('Доступ запрещен')
+        return redirect(url_for('trainer_menu'))
+
+    grade_info = trainer_mgr.get_grade_info(result['grade'])
+
+    # Получаем детализацию ответов
+    answers_detail = []
+    if result.get('answers'):
+        for ans in result['answers']:
+            step = trainer_mgr.get_step_by_num(result['scenario_id'], ans['step_num'])
+            if step:
+                for answer in step.get('answers', []):
+                    if answer['id'] == ans['answer_id']:
+                        answers_detail.append({
+                            'step_num': ans['step_num'],
+                            'answer_text': answer['answer_text'],
+                            'points': ans['points'],
+                            'is_correct': ans['is_correct'],
+                            'is_partial': answer.get('is_partial', False),
+                            'is_timeout': ans.get('is_timeout', False),
+                            'mood_impact': ans.get('mood_impact', 0),
+                            'knowledge_link': ans.get('knowledge_link') or answer.get('knowledge_link'),
+                            'feedback': answer.get('feedback', '')
+                        })
+                        break
+
+    # Находим следующий сценарий
+    scenarios = trainer_mgr.get_scenarios_by_level(result['level_code'])
+    next_scenario = None
+    found_current = False
+    for s in scenarios:
+        if found_current:
+            next_scenario = s
+            break
+        if s['id'] == result['scenario_id']:
+            found_current = True
+
+    return render_template('trainer_results.html',
+                         result=result,
+                         grade_info=grade_info,
+                         answers_detail=answers_detail,
+                         next_scenario=next_scenario)
+
+
+# ============================================
+# АДМИН-ПАНЕЛЬ ТРЕНАЖЕРА
+# ============================================
+
+@app.route('/admin/trainer')
+@AdminAuth.login_required
+def admin_trainer():
+    """Админка: список сценариев тренажера"""
+    stats = trainer_mgr.get_statistics()
+    levels = trainer_mgr.get_all_levels()
+    categories = trainer_mgr.get_all_categories()
+
+    # Фильтры
+    level_code = request.args.get('level')
+    category_id = request.args.get('category', type=int)
+
+    scenarios = trainer_mgr.get_all_scenarios(include_inactive=True)
+
+    # Применяем фильтры
+    if level_code:
+        scenarios = [s for s in scenarios if s['level_code'] == level_code]
+    if category_id:
+        scenarios = [s for s in scenarios if s['category_id'] == category_id]
+
+    # Добавляем количество шагов
+    for scenario in scenarios:
+        scenario['steps_count'] = trainer_mgr.get_steps_count(scenario['id'])
+
+    return render_template('admin_trainer.html',
+                         stats=stats,
+                         levels=levels,
+                         categories=categories,
+                         scenarios=scenarios,
+                         current_level=level_code,
+                         current_category=category_id)
+
+
+@app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_trainer_create():
+    """Создание нового сценария"""
+    levels = trainer_mgr.get_all_levels()
+    categories = trainer_mgr.get_all_categories()
+
+    if request.method == 'POST':
+        data = {
+            'level_id': request.form.get('level_id', type=int),
+            'category_id': request.form.get('category_id', type=int) or None,
+            'title': request.form.get('title', '').strip(),
+            'description': request.form.get('description', '').strip(),
+            'estimated_time': request.form.get('estimated_time', 5, type=int),
+            'total_points': request.form.get('total_points', 100, type=int),
+            'is_active': 1 if request.form.get('is_active') else 0,
+            'order_num': request.form.get('order_num', 0, type=int)
+        }
+
+        if not data['title']:
+            flash('Название обязательно')
+            return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[])
+
+        result = trainer_mgr.create_scenario(data)
+
+        if result['success']:
+            flash('Сценарий успешно создан!')
+            return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
+        else:
+            flash(f'Ошибка: {result.get("error")}')
+
+    return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[])
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/edit', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_trainer_edit(scenario_id):
+    """Редактирование сценария"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+
+    if not scenario:
+        flash('Сценарий не найден')
+        return redirect(url_for('admin_trainer'))
+
+    levels = trainer_mgr.get_all_levels()
+    categories = trainer_mgr.get_all_categories()
+
+    if request.method == 'POST':
+        # Собираем карточку клиента в JSON
+        client_info = {}
+        if request.form.get('client_name'):
+            client_info['name'] = request.form.get('client_name', '').strip()
+        if request.form.get('client_tariff'):
+            client_info['tariff'] = request.form.get('client_tariff', '').strip()
+        if request.form.get('client_balance'):
+            client_info['balance'] = request.form.get('client_balance', '').strip()
+
+        # Парсим дополнительные поля JSON
+        client_extra = request.form.get('client_extra', '').strip()
+        if client_extra:
+            try:
+                import json
+                extra_data = json.loads(client_extra)
+                client_info.update(extra_data)
+            except:
+                pass
+
+        client_info_json = json.dumps(client_info, ensure_ascii=False) if client_info else None
+
+        # Обновляем основную информацию сценария
+        data = {
+            'level_id': request.form.get('level_id', type=int),
+            'category_id': request.form.get('category_id', type=int) or None,
+            'title': request.form.get('title', '').strip(),
+            'description': request.form.get('description', '').strip(),
+            'estimated_time': request.form.get('estimated_time', 5, type=int),
+            'total_points': request.form.get('total_points', 100, type=int),
+            'is_active': 1 if request.form.get('is_active') else 0,
+            'order_num': request.form.get('order_num', 0, type=int),
+            'timer_seconds': request.form.get('timer_seconds', 15, type=int),
+            'initial_loyalty': request.form.get('initial_loyalty', 100, type=int),
+            'client_info_json': client_info_json
+        }
+
+        result = trainer_mgr.update_scenario(scenario_id, data)
+
+        if result['success']:
+            # Обновляем шаги и ответы
+            for key in request.form:
+                # Обновление шагов
+                if key.startswith('step_') and key.endswith('_message'):
+                    step_id = int(key.split('_')[1])
+                    trainer_mgr.update_step(step_id, {
+                        'client_message': request.form.get(key, '').strip(),
+                        'client_avatar': request.form.get(f'step_{step_id}_avatar', ''),
+                        'client_name': request.form.get(f'step_{step_id}_name', 'Клиент'),
+                        'initial_mood': request.form.get(f'step_{step_id}_mood', 'neutral')
+                    })
+
+                # Обновление ответов
+                if key.startswith('answer_') and key.endswith('_text'):
+                    answer_id = int(key.split('_')[1])
+                    trainer_mgr.update_answer(answer_id, {
+                        'answer_text': request.form.get(key, '').strip(),
+                        'is_correct': 1 if request.form.get(f'answer_{answer_id}_correct') else 0,
+                        'is_partial': 1 if request.form.get(f'answer_{answer_id}_partial') else 0,
+                        'points': request.form.get(f'answer_{answer_id}_points', 0, type=int),
+                        'feedback': request.form.get(f'answer_{answer_id}_feedback', '').strip(),
+                        'mood_impact': request.form.get(f'answer_{answer_id}_mood_impact', 0, type=int),
+                        'knowledge_link': request.form.get(f'answer_{answer_id}_knowledge_link', '').strip() or None
+                    })
+
+            flash('Сценарий успешно обновлен!')
+        else:
+            flash(f'Ошибка: {result.get("error")}')
+
+        # Перезагружаем данные
+        scenario = trainer_mgr.get_scenario(scenario_id)
+
+    # Получаем шаги с ответами
+    steps = trainer_mgr.get_scenario_steps(scenario_id)
+    for step in steps:
+        step['answers'] = trainer_mgr.get_step_answers(step['id'])
+
+    # Парсим карточку клиента
+    client_info = None
+    client_extra = None
+    if scenario.get('client_info_json'):
+        try:
+            import json
+            client_info = json.loads(scenario['client_info_json'])
+            # Отделяем стандартные поля от дополнительных
+            standard_fields = ['name', 'tariff', 'balance']
+            extra_fields = {k: v for k, v in client_info.items() if k not in standard_fields}
+            if extra_fields:
+                client_extra = json.dumps(extra_fields, ensure_ascii=False, indent=2)
+        except:
+            pass
+
+    return render_template('admin_trainer_edit.html',
+                         scenario=scenario,
+                         levels=levels,
+                         categories=categories,
+                         steps=steps,
+                         client_info=client_info,
+                         client_extra=client_extra)
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_delete(scenario_id):
+    """Удаление сценария"""
+    result = trainer_mgr.delete_scenario(scenario_id)
+
+    if result['success']:
+        flash('Сценарий удален')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/step/create', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_create_step(scenario_id):
+    """Создание шага сценария"""
+    data = {
+        'client_message': request.form.get('client_message', 'Сообщение клиента'),
+        'client_avatar': request.form.get('client_avatar', '👤'),
+        'client_name': request.form.get('client_name', 'Клиент')
+    }
+
+    result = trainer_mgr.create_step(scenario_id, data)
+
+    if result['success']:
+        flash('Шаг добавлен')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id))
+
+
+@app.route('/admin/trainer/step/<int:step_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_delete_step(step_id):
+    """Удаление шага"""
+    result = trainer_mgr.delete_step(step_id)
+
+    if result['success']:
+        flash('Шаг удален')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(request.referrer or url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/step/<int:step_id>/answer/create', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_create_answer(step_id):
+    """Создание варианта ответа"""
+    data = {
+        'answer_text': request.form.get('answer_text', 'Новый ответ'),
+        'is_correct': 0,
+        'is_partial': 0,
+        'points': request.form.get('points', 0, type=int),
+        'feedback': ''
+    }
+
+    result = trainer_mgr.create_answer(step_id, data)
+
+    if result['success']:
+        flash('Ответ добавлен')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(request.referrer or url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/answer/<int:answer_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_delete_answer(answer_id):
+    """Удаление варианта ответа"""
+    result = trainer_mgr.delete_answer(answer_id)
+
+    if result['success']:
+        flash('Ответ удален')
+    else:
+        flash(f'Ошибка: {result.get("error")}')
+
+    return redirect(request.referrer or url_for('admin_trainer'))
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/visual')
+@AdminAuth.login_required
+def admin_trainer_visual(scenario_id):
+    """Визуальный редактор сценария (No-Code)"""
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    if not scenario:
+        flash('Сценарий не найден')
+        return redirect(url_for('admin_trainer'))
+
+    # Получаем шаги с ответами для инициализации визуального редактора
+    steps = trainer_mgr.get_scenario_steps(scenario_id)
+    for step in steps:
+        step['answers'] = trainer_mgr.get_step_answers(step['id'])
+
+    return render_template('admin_trainer_visual.html',
+                         scenario=scenario,
+                         steps=steps)
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/visual/save', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_visual_save(scenario_id):
+    """Сохранение визуальной структуры сценария"""
+    import json
+
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    if not scenario:
+        return jsonify({'success': False, 'error': 'Сценарий не найден'})
+
+    try:
+        data = request.get_json()
+        nodes = data.get('nodes', [])
+        connections = data.get('connections', [])
+
+        # Очищаем существующие шаги
+        for step in trainer_mgr.get_scenario_steps(scenario_id):
+            trainer_mgr.delete_step(step['id'])
+
+        # Создаем словарь для маппинга временных ID узлов к реальным ID шагов
+        node_to_step = {}
+
+        # Находим все узлы типа "client" (реплики клиента) - это будут шаги
+        client_nodes = [n for n in nodes if n.get('type') == 'client']
+
+        # Сортируем узлы по позиции Y для определения порядка
+        client_nodes.sort(key=lambda n: n.get('y', 0))
+
+        for idx, node in enumerate(client_nodes):
+            step_data = {
+                'client_message': node.get('label', 'Сообщение клиента'),
+                'client_avatar': '👤',
+                'client_name': node.get('clientName', 'Клиент'),
+                'initial_mood': node.get('mood', 'neutral'),
+                'step_number': idx + 1
+            }
+
+            result = trainer_mgr.create_step(scenario_id, step_data)
+            if result['success']:
+                step_id = result['step_id']
+                node_to_step[node['id']] = step_id
+
+                # Создаём ответы из поля answers узла client
+                node_answers = node.get('answers', [])
+                for answer in node_answers:
+                    answer_data = {
+                        'answer_text': answer.get('text', 'Ответ оператора'),
+                        'is_correct': 1 if answer.get('isCorrect', False) else 0,
+                        'is_partial': 1 if answer.get('isPartial', False) else 0,
+                        'points': answer.get('points', 0),
+                        'feedback': answer.get('feedback', ''),
+                        'mood_impact': answer.get('moodImpact', 0),
+                        'knowledge_link': answer.get('knowledgeLink', '')
+                    }
+                    trainer_mgr.create_answer(step_id, answer_data)
+
+        # Также обрабатываем отдельные узлы типа "answer" (для обратной совместимости)
+        answer_nodes = [n for n in nodes if n.get('type') == 'answer']
+
+        for answer_node in answer_nodes:
+            # Находим связь от клиентского узла к этому ответу
+            parent_connection = next(
+                (c for c in connections if c.get('toId') == answer_node['id']),
+                None
+            )
+
+            if parent_connection:
+                parent_node_id = parent_connection.get('fromId')
+                step_id = node_to_step.get(parent_node_id)
+
+                if step_id:
+                    is_correct = answer_node.get('isCorrect', False)
+                    mood_impact = answer_node.get('moodImpact', 0)
+
+                    answer_data = {
+                        'answer_text': answer_node.get('label', 'Ответ оператора'),
+                        'is_correct': 1 if is_correct else 0,
+                        'is_partial': 0,
+                        'points': 10 if is_correct else 0,
+                        'feedback': answer_node.get('feedback', ''),
+                        'mood_impact': mood_impact,
+                        'knowledge_link': answer_node.get('knowledgeLink', '')
+                    }
+
+                    trainer_mgr.create_answer(step_id, answer_data)
+
+        # Сохраняем визуальную структуру для последующего восстановления
+        visual_data = {
+            'nodes': nodes,
+            'connections': connections
+        }
+
+        # Сохраняем визуальные данные в отдельное поле сценария
+        cursor = trainer_mgr.conn.cursor()
+
+        # Проверяем существует ли колонка visual_data
+        cursor.execute("PRAGMA table_info(trainer_scenarios)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if 'visual_data' not in columns:
+            cursor.execute("ALTER TABLE trainer_scenarios ADD COLUMN visual_data TEXT")
+            trainer_mgr.conn.commit()
+
+        cursor.execute(
+            "UPDATE trainer_scenarios SET visual_data = ? WHERE id = ?",
+            (json.dumps(visual_data, ensure_ascii=False), scenario_id)
+        )
+        trainer_mgr.conn.commit()
+
+        return jsonify({'success': True, 'message': 'Сценарий сохранен'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/admin/trainer/scenario/<int:scenario_id>/visual/load')
+@AdminAuth.login_required
+def admin_trainer_visual_load(scenario_id):
+    """Загрузка визуальной структуры сценария с синхронизацией из БД"""
+    import json
+
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    if not scenario:
+        return jsonify({'success': False, 'error': 'Сценарий не найден'})
+
+    try:
+        # Получаем сохраненные позиции узлов (если есть)
+        cursor = trainer_mgr.conn.cursor()
+        cursor.execute("PRAGMA table_info(trainer_scenarios)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        saved_positions = {}  # id узла -> {x, y}
+        saved_connections = []
+
+        if 'visual_data' in columns:
+            cursor.execute("SELECT visual_data FROM trainer_scenarios WHERE id = ?", (scenario_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                visual_data = json.loads(row[0])
+                # Сохраняем только позиции узлов
+                for node in visual_data.get('nodes', []):
+                    saved_positions[node.get('id')] = {'x': node.get('x', 200), 'y': node.get('y', 100)}
+                saved_connections = visual_data.get('connections', [])
+
+        # ВСЕГДА генерируем узлы из актуальных данных БД
+        steps = trainer_mgr.get_scenario_steps(scenario_id)
+        nodes = []
+        connections = []
+
+        y_offset = 100
+        for step in steps:
+            step_id = f"step_{step['id']}"
+
+            # Используем сохраненную позицию или дефолтную
+            pos = saved_positions.get(step_id, {'x': 200, 'y': y_offset})
+
+            # Узел реплики клиента с полными данными
+            nodes.append({
+                'id': step_id,
+                'type': 'client',
+                'x': pos['x'],
+                'y': pos['y'],
+                'label': step.get('client_message', ''),
+                'mood': step.get('initial_mood', 'neutral'),
+                'stepId': step['id'],
+                'stepNum': step.get('step_num', 1),
+                'clientName': step.get('client_name', 'Клиент'),
+                'answers': []  # Будет заполнено ниже
+            })
+
+            # Узлы ответов
+            answers = trainer_mgr.get_step_answers(step['id'])
+            answer_x = pos['x'] + 300
+            answer_y_offset = 0
+            node_answers = []
+
+            for answer in answers:
+                answer_id = f"answer_{answer['id']}"
+                ans_pos = saved_positions.get(answer_id, {'x': answer_x, 'y': pos['y'] + answer_y_offset})
+
+                # Добавляем ответ в список ответов узла клиента
+                node_answers.append({
+                    'id': answer['id'],
+                    'text': answer.get('answer_text', ''),
+                    'isCorrect': bool(answer.get('is_correct', 0)),
+                    'isPartial': bool(answer.get('is_partial', 0)),
+                    'points': answer.get('points', 0),
+                    'moodImpact': answer.get('mood_impact', 0)
+                })
+
+                answer_y_offset += 80
+
+            # Обновляем ответы в узле клиента
+            nodes[-1]['answers'] = node_answers
+
+            y_offset += 200
+
+        return jsonify({
+            'success': True,
+            'nodes': nodes,
+            'connections': saved_connections if saved_connections else []
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/admin/trainer/stats')
+@AdminAuth.login_required
+def admin_trainer_stats():
+    """Статистика тренажера"""
+    stats = trainer_mgr.get_statistics()
+    return render_template('admin_trainer_stats.html', stats=stats)
+
+
+@app.route('/admin/trainer/export')
+@AdminAuth.login_required
+def admin_trainer_export():
+    """Экспорт статистики в Excel"""
+    try:
+        import tempfile
+        from flask import send_file
+        from datetime import datetime
+        import pandas as pd
+
+        stats = trainer_mgr.get_statistics()
+
+        # Создаем Excel файл
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        tmp_path = tmp_file.name
+        tmp_file.close()
+
+        with pd.ExcelWriter(tmp_path, engine='openpyxl') as writer:
+            # Общая статистика
+            general_df = pd.DataFrame([{
+                'Всего сценариев': stats['total_scenarios'],
+                'Всего прохождений': stats['total_completions'],
+                'Уникальных пользователей': stats['unique_users'],
+                'Средний балл': stats['avg_score']
+            }])
+            general_df.to_excel(writer, sheet_name='Общая', index=False)
+
+            # Статистика по уровням
+            levels_df = pd.DataFrame(stats['levels'])
+            levels_df.to_excel(writer, sheet_name='По уровням', index=False)
+
+            # Топ пользователей
+            if stats['top_users']:
+                users_df = pd.DataFrame(stats['top_users'])
+                users_df.columns = ['Пользователь', 'Прохождений', 'Средний балл']
+                users_df.to_excel(writer, sheet_name='Рейтинг', index=False)
+
+        return send_file(
+            tmp_path,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'trainer_stats_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+
+    except Exception as e:
+        print(f"[admin_trainer_export] Ошибка: {e}")
+        traceback.print_exc()
+        flash('Ошибка экспорта')
+        return redirect(url_for('admin_trainer_stats'))
+
+
+# ============================================
 # АДМИН-ПАНЕЛЬ
 # ============================================
 
 @app.route('/login', methods=['GET', 'POST'])
 def user_login():
     """Страница входа для всех пользователей через AD"""
+    # Проверяем, нужно ли показать ошибку (только после POST запроса)
+    show_error = request.args.get('error')
+    error_message = None
+
+    if show_error == 'invalid':
+        error_message = 'Неверный логин или пароль'
+    elif show_error == 'rate_limit':
+        error_message = 'Слишком много попыток входа. Попробуйте через 15 минут.'
+    elif show_error == 'credentials':
+        error_message = 'Некорректные учётные данные'
+
     if request.method == 'POST':
         # Rate limiting для защиты от brute force
         ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
         if not rate_limiter.check_login_attempt(ip, max_attempts=5, window=900):
-            flash('Слишком много попыток входа. Попробуйте через 15 минут.')
-            return redirect(url_for('user_login')), 429
+            return redirect(url_for('user_login', error='rate_limit')), 429
 
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
 
         # Валидация длины
         if len(username) > 100 or len(password) > 128:
-            flash('Некорректные учётные данные')
-            return redirect(url_for('user_login'))
+            return redirect(url_for('user_login', error='credentials'))
 
-        # ВРЕМЕННО: Тестовый пользователь для локальной разработки
-        if username == 'test' and password == 'test':
-            session['user_info'] = {
-                'username': 'test',
-                'name': 'Тестовый пользователь',
-                'department': 'IT',
-                'email': 'test@example.com',
-                'workplace': ''
-            }
-            session['authenticated'] = True
-            session.permanent = True
-            return redirect(url_for('choose_help_type'))
+        # Тестовый режим (без AD) - для локальной разработки
+        # По умолчанию включен если нет AD_SERVER в .env
+        TEST_MODE = os.getenv('TEST_MODE', 'true').lower() == 'true' or not os.getenv('AD_SERVER')
 
-        # Аутентификация через AD
+        if TEST_MODE:
+            # Тестовая авторизация: любой логин/пароль где пароль = "test" или "123"
+            if password in ['test', '123', 'password']:
+                session['user_info'] = {
+                    'username': username,
+                    'name': username.title(),
+                    'department': 'Тестовый отдел',
+                    'email': f'{username}@test.local',
+                    'workplace': ''
+                }
+                session['authenticated'] = True
+                session.permanent = True
+                return redirect(url_for('choose_help_type'))
+            else:
+                return redirect(url_for('user_login', error='invalid'))
+
+        # Аутентификация через AD (продакшен)
         from ad_auth import ad_auth
         ad_result = ad_auth.verify_credentials(username, password)
 
@@ -1299,10 +2269,9 @@ def user_login():
             # Переходим к выбору типа помощи
             return redirect(url_for('choose_help_type'))
         else:
-            flash('Неверный логин или пароль')
-            return redirect(url_for('user_login'))
+            return redirect(url_for('user_login', error='invalid'))
 
-    return render_template('user_login.html')
+    return render_template('user_login.html', error_message=error_message)
 
 @app.route('/enter_workplace', methods=['GET', 'POST'])
 def enter_workplace():
@@ -1346,6 +2315,18 @@ def admin_login():
             flash('Некорректные учётные данные')
             return redirect(url_for('admin_login'))
 
+        # Тестовый режим для админа
+        TEST_MODE = os.getenv('TEST_MODE', 'true').lower() == 'true' or not os.getenv('AD_SERVER')
+
+        if TEST_MODE and password in ['admin', '123', 'test']:
+            session['admin_logged_in'] = True
+            session['admin_username'] = username
+            session['admin_role'] = ROLE_SUPER_ADMIN
+            session['admin_token'] = AdminAuth.generate_session_token()
+            session.permanent = True
+            flash(f'Успешная авторизация (тестовый режим). Роль: Супер-Админ')
+            return redirect(url_for('admin_dashboard'))
+
         admin_data = AdminAuth.verify_admin(username, password)
         if admin_data:
             session['admin_logged_in'] = True
@@ -1380,6 +2361,66 @@ def admin_dashboard():
     return render_template('admin_dashboard.html', manuals=manuals)
 
 
+@app.route('/admin/manual/create', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_create_manual():
+    """Создание нового мануала"""
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        manual_type = request.form.get('manual_type', 'with_subproblems').strip()
+
+        # Валидация
+        if not title:
+            flash('Название обязательно для заполнения')
+            return render_template('admin_create_manual.html')
+
+        # Загружаем существующие мануалы
+        manuals = admin_manager.load_manuals()
+
+        # Автоматически находим следующий свободный ID
+        existing_ids = []
+        for mid in manuals.keys():
+            try:
+                existing_ids.append(int(mid))
+            except ValueError:
+                pass
+
+        # Находим следующий свободный номер
+        manual_id = '1'
+        if existing_ids:
+            manual_id = str(max(existing_ids) + 1)
+
+        # Добавляем номер к названию (если его там ещё нет)
+        sanitized_title = admin_manager.sanitize_text(title, 200)
+        if not sanitized_title.startswith(f"{manual_id}."):
+            sanitized_title = f"{manual_id}. {sanitized_title}"
+
+        # Создаём новый мануал в зависимости от типа
+        if manual_type == 'simple':
+            # Простой мануал без подпроблем
+            manuals[manual_id] = {
+                "title": sanitized_title,
+                "photos": []
+            }
+        else:
+            # Мануал с подпроблемами
+            manuals[manual_id] = {
+                "title": sanitized_title,
+                "subproblems": {}
+            }
+
+        # Сохраняем
+        if admin_manager.save_manuals(manuals):
+            flash(f'Мануал "{title}" успешно создан!')
+            return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+        else:
+            flash('Ошибка при сохранении мануала')
+            return render_template('admin_create_manual.html')
+
+    # GET request - показываем форму
+    return render_template('admin_create_manual.html')
+
+
 @app.route('/admin/manual/<string:manual_id>/edit')
 @AdminAuth.login_required
 def admin_edit_manual(manual_id):
@@ -1394,7 +2435,7 @@ def admin_edit_manual(manual_id):
         flash('Мануал не найден')
         return redirect(url_for('admin_dashboard'))
 
-    # Если мануал имеет поле subproblems - это мануал с подпроблемами (даже если пусто)
+    # Если есть поле subproblems - показываем список подпроблем (даже если пустой)
     if 'subproblems' in manual:
         return render_template('admin_manual_subproblems.html', manual_id=manual_id, manual=manual)
 
@@ -1402,18 +2443,148 @@ def admin_edit_manual(manual_id):
     return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
 
 
+@app.route('/admin/manual/<string:manual_id>/subproblem/create', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_create_subproblem(manual_id):
+    """Создание новой подпроблемы"""
+    # Валидация
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
+
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+
+        # Валидация
+        if not title:
+            flash('Название обязательно для заполнения')
+            return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+
+        # Проверка на существование
+        if 'subproblems' not in manual:
+            manual['subproblems'] = {}
+
+        # Автоматически находим следующий свободный номер
+        existing_nums = []
+        for subp_id in manual['subproblems'].keys():
+            if '.' in subp_id:
+                try:
+                    num = int(subp_id.split('.')[1])
+                    existing_nums.append(num)
+                except ValueError:
+                    pass
+
+        # Находим следующий свободный номер
+        next_num = max(existing_nums) + 1 if existing_nums else 1
+
+        # Формируем полный ID подпроблемы
+        subproblem_id = f"{manual_id}.{next_num}"
+
+        # Создаём новую подпроблему
+        manual['subproblems'][subproblem_id] = {
+            "title": admin_manager.sanitize_text(title, 200),
+            "photos": [],
+            "video": None
+        }
+
+        # Сохраняем
+        if admin_manager.save_manuals(manuals):
+            flash(f'Подпроблема "{title}" успешно создана!')
+            return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+        else:
+            flash('Ошибка при сохранении подпроблемы')
+            return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+
+    # GET request - показываем форму
+    return render_template('admin_create_subproblem.html', manual_id=manual_id, manual=manual)
+
+
+@app.route('/admin/manual/<string:manual_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_delete_manual(manual_id):
+    """Удаление мануала"""
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
+
+    manuals = admin_manager.load_manuals()
+
+    if manual_id not in manuals:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    manual_title = manuals[manual_id].get('title', 'Неизвестный мануал')
+
+    # Удаляем мануал
+    del manuals[manual_id]
+
+    if admin_manager.save_manuals(manuals):
+        flash(f'Мануал "{manual_title}" успешно удалён')
+    else:
+        flash('Ошибка при удалении мануала')
+
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/delete', methods=['POST'])
+@AdminAuth.login_required
+def admin_delete_subproblem(manual_id, subproblem_id):
+    """Удаление подпроблемы"""
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
+
+    if not admin_manager.validate_subproblem_id(subproblem_id):
+        flash('Некорректный ID подпроблемы')
+        return redirect(url_for('admin_dashboard'))
+
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
+        flash('Подпроблема не найдена')
+        return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+
+    subproblem_title = manual['subproblems'][subproblem_id].get('title', 'Неизвестная подпроблема')
+
+    # Удаляем подпроблему
+    del manual['subproblems'][subproblem_id]
+
+    if admin_manager.save_manuals(manuals):
+        flash(f'Подпроблема "{subproblem_title}" успешно удалена')
+    else:
+        flash('Ошибка при удалении подпроблемы')
+
+    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+
+
 @app.route('/admin/manual/<string:manual_id>/edit-simple')
 @AdminAuth.login_required
 def admin_edit_simple_manual(manual_id):
-    """Редактирование простого мануала (без подпроблем)"""
+    """Страница редактирования простого мануала (без подпроблем)"""
+    # Валидация ID
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
     manual = admin_manager.get_manual(manual_id)
     if not manual:
         flash('Мануал не найден')
         return redirect(url_for('admin_dashboard'))
 
-    # Проверяем, что это действительно мануал с подпроблемами (непустой объект)
-    if 'subproblems' in manual and manual['subproblems']:
-        flash('Этот мануал содержит подпроблемы, используйте другой редактор')
+    # Проверяем что это простой мануал
+    if 'subproblems' in manual:
+        flash('Этот мануал содержит подпроблемы')
         return redirect(url_for('admin_edit_manual', manual_id=manual_id))
 
     # Получаем URLs для фотографий
@@ -1423,26 +2594,22 @@ def admin_edit_simple_manual(manual_id):
             url = get_file_url(photo.get('id'))
             photo_urls.append(url)
 
-    # Получаем URL для видео
+    # Получаем URL для видео если есть
     video_url = None
-    if 'video' in manual and manual['video']:
+    if 'video' in manual and manual['video'] is not None:
         video_id = manual['video'].get('id')
         if video_id:
             video_url = get_file_url(video_id)
 
-    # Определяем, это простой мануал или мануал с подпроблемами но без подпроблем
-    # Простой мануал = НЕТ поля subproblems
-    # Мануал с подпроблемами (пустой) = ЕСТЬ поле subproblems, но пустой объект
-    is_truly_simple = 'subproblems' not in manual
-
+    # Используем тот же template что и для подпроблем, но передаём manual вместо subproblem
     return render_template('admin_edit_subproblem.html',
                          manual_id=manual_id,
                          manual_title=manual.get('title', ''),
-                         subproblem_id=manual_id,  # Для простого мануала используем manual_id
-                         subproblem=manual,
+                         subproblem_id=manual_id,  # Для простых мануалов subproblem_id = manual_id
+                         subproblem=manual,  # Передаём сам мануал как "подпроблему"
                          photo_urls=photo_urls,
                          video_url=video_url,
-                         is_simple_manual=is_truly_simple)
+                         is_simple_manual=True)  # Флаг что это простой мануал
 
 
 @app.route('/admin/manual/<string:manual_id>/subproblem/<string:subproblem_id>/edit')
@@ -1479,7 +2646,7 @@ def admin_edit_subproblem(manual_id, subproblem_id):
 
     # Получаем URL для видео если есть
     video_url = None
-    if 'video' in subproblem:
+    if 'video' in subproblem and subproblem['video'] is not None:
         video_id = subproblem['video'].get('id')
         if video_id:
             video_url = get_file_url(video_id)
@@ -1541,26 +2708,24 @@ def admin_update_subproblem(manual_id, subproblem_id):
         flash('Мануал не найден')
         return redirect(url_for('admin_dashboard'))
 
-    is_simple_manual = 'subproblems' not in manual
-
-    # Простые мануалы используют manual_id как subproblem_id
-    if is_simple_manual and subproblem_id == manual_id:
-        subproblem = manual
-    else:
-        if not admin_manager.validate_subproblem_id(subproblem_id):
-            flash('Некорректный ID подпроблемы')
-            return redirect(url_for('admin_dashboard'))
-
-        # Проверяем существование подпроблемы
-        if 'subproblems' not in manual or subproblem_id not in manual['subproblems']:
+    # Определяем тип мануала и получаем нужный объект
+    if 'subproblems' in manual:
+        # Мануал с подпроблемами
+        if subproblem_id not in manual['subproblems']:
             flash('Подпроблема не найдена')
             return redirect(url_for('admin_edit_manual', manual_id=manual_id))
-
-        subproblem = manual['subproblems'][subproblem_id]
+        target_obj = manual['subproblems'][subproblem_id]
+        redirect_url = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
+        success_message = 'Подпроблема успешно обновлена'
+    else:
+        # Простой мануал
+        target_obj = manual
+        redirect_url = url_for('admin_edit_simple_manual', manual_id=manual_id)
+        success_message = 'Мануал успешно обновлён'
 
     # Обновляем подписи к фото
-    if 'photos' in subproblem:
-        for photo_index, photo in enumerate(subproblem['photos']):
+    if 'photos' in target_obj:
+        for photo_index, photo in enumerate(target_obj['photos']):
             caption_field = f'caption_{photo_index}'
             if caption_field in request.form:
                 new_caption = request.form.get(caption_field, '').strip()
@@ -1568,22 +2733,20 @@ def admin_update_subproblem(manual_id, subproblem_id):
                 photo['caption'] = new_caption
 
     # Обновляем подпись к видео если есть
-    if 'video' in subproblem:
+    if 'video' in target_obj:
         video_caption_field = 'video_caption'
         if video_caption_field in request.form:
             new_video_caption = request.form.get(video_caption_field, '').strip()
             new_video_caption = admin_manager.sanitize_text(new_video_caption, max_length=300)
-            subproblem['video']['caption'] = new_video_caption
+            target_obj['video']['caption'] = new_video_caption
 
     # Сохраняем изменения
     if admin_manager.update_manual(manual_id, manual.get('title', ''), manual):
-        flash('Подпроблема успешно обновлена')
+        flash(success_message)
     else:
         flash('Ошибка при сохранении изменений')
 
-    if is_simple_manual and subproblem_id == manual_id:
-        return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
-    return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+    return redirect(redirect_url)
 
 
 @app.route('/admin/delete-photo', methods=['POST'])
@@ -1618,6 +2781,74 @@ def admin_delete_photo():
         flash('Ошибка при удалении фото')
 
     return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+
+
+@app.route('/admin/delete-step', methods=['POST'])
+@AdminAuth.login_required
+def admin_delete_step():
+    """Удаление всего шага (фото + описание) из подпроблемы"""
+    manual_id = request.form.get('manual_id', '')
+    subproblem_id = request.form.get('subproblem_id', '')
+    step_index_str = request.form.get('step_index', '0')
+
+    # Валидация
+    if not admin_manager.validate_manual_id(manual_id):
+        flash('Некорректный ID мануала')
+        return redirect(url_for('admin_dashboard'))
+
+    # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
+    # if not admin_manager.validate_subproblem_id(subproblem_id):
+    #     flash('Некорректный ID подпроблемы')
+    #     return redirect(url_for('admin_dashboard'))
+
+    try:
+        step_index = int(step_index_str)
+        if step_index < 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        flash('Некорректный индекс шага')
+        return redirect(url_for('admin_dashboard'))
+
+    # Загружаем мануалы
+    manuals = admin_manager.load_manuals()
+    manual = manuals.get(manual_id)
+
+    if not manual:
+        flash('Мануал не найден')
+        return redirect(url_for('admin_dashboard'))
+
+    # Определяем тип мануала и получаем нужный объект
+    if 'subproblems' in manual:
+        # Мануал с подпроблемами
+        if subproblem_id not in manual['subproblems']:
+            flash('Подпроблема не найдена')
+            return redirect(url_for('admin_dashboard'))
+        target_obj = manual['subproblems'][subproblem_id]
+        redirect_url = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
+    else:
+        # Простой мануал
+        target_obj = manual
+        redirect_url = url_for('admin_edit_simple_manual', manual_id=manual_id)
+
+    if 'photos' not in target_obj or not isinstance(target_obj['photos'], list):
+        flash('Шаги не найдены')
+        return redirect(redirect_url)
+
+    # Проверяем индекс
+    if step_index >= len(target_obj['photos']):
+        flash('Шаг не найден')
+        return redirect(redirect_url)
+
+    # Удаляем шаг
+    del target_obj['photos'][step_index]
+
+    # Сохраняем
+    if admin_manager.save_manuals(manuals):
+        flash(f'Шаг {step_index + 1} успешно удалён')
+    else:
+        flash('Ошибка при удалении шага')
+
+    return redirect(redirect_url)
 
 
 @app.route('/admin/delete-video', methods=['POST'])
@@ -1780,10 +3011,9 @@ def admin_add_new_step():
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    # Для простых мануалов subproblem_id = manual_id, не требует валидации формата X.Y
+    # Для простых мануалов subproblem_id = manual_id, для подпроблем проверяем формат X.Y
     manual = admin_manager.get_manual(manual_id)
     if manual and 'subproblems' in manual:
-        # Это мануал с подпроблемами - проверяем формат подпроблемы
         if not admin_manager.validate_subproblem_id(subproblem_id):
             flash('Некорректный ID подпроблемы')
             return redirect(url_for('admin_dashboard'))
@@ -1812,54 +3042,7 @@ def admin_add_new_step():
     manual = admin_manager.get_manual(manual_id)
     if manual and 'subproblems' in manual:
         return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
-    else:
-        return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
-
-
-@app.route('/admin/delete-step', methods=['POST'])
-@AdminAuth.login_required
-def admin_delete_step():
-    """Удаление целого шага (фото + описание)"""
-    manual_id = request.form.get('manual_id', '')
-    subproblem_id = request.form.get('subproblem_id', '')
-    step_index_str = request.form.get('step_index', '0')
-
-    try:
-        step_index = int(step_index_str)
-    except:
-        flash('Некорректный индекс шага')
-        return redirect(url_for('admin_dashboard'))
-
-    manuals = admin_manager.load_manuals()
-    manual = manuals.get(manual_id)
-
-    if not manual:
-        flash('Мануал не найден')
-        return redirect(url_for('admin_dashboard'))
-
-    # Определяем тип мануала и получаем нужный объект
-    if 'subproblems' in manual:
-        if subproblem_id not in manual['subproblems']:
-            flash('Подпроблема не найдена')
-            return redirect(url_for('admin_dashboard'))
-        target_obj = manual['subproblems'][subproblem_id]
-        redirect_url = url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id)
-    else:
-        target_obj = manual
-        redirect_url = url_for('admin_edit_simple_manual', manual_id=manual_id)
-
-    if 'photos' not in target_obj or step_index >= len(target_obj['photos']):
-        flash('Шаг не найден')
-        return redirect(redirect_url)
-
-    del target_obj['photos'][step_index]
-
-    if admin_manager.save_manuals(manuals):
-        flash(f'Шаг {step_index + 1} удалён')
-    else:
-        flash('Ошибка при удалении шага')
-
-    return redirect(redirect_url)
+    return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
 
 
 @app.route('/admin/upload-video', methods=['GET', 'POST'])
@@ -1875,9 +3058,10 @@ def admin_upload_video():
             flash('Некорректный ID мануала')
             return redirect(url_for('admin_dashboard'))
 
-        if not admin_manager.validate_subproblem_id(subproblem_id):
-            flash('Некорректный ID подпроблемы')
-            return redirect(url_for('admin_dashboard'))
+        # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
+        # if not admin_manager.validate_subproblem_id(subproblem_id):
+        #     flash('Некорректный ID подпроблемы')
+        #     return redirect(url_for('admin_dashboard'))
 
         return render_template('admin_upload_video.html',
                              manual_id=manual_id,
@@ -1893,9 +3077,10 @@ def admin_upload_video():
         flash('Некорректный ID мануала')
         return redirect(url_for('admin_dashboard'))
 
-    if not admin_manager.validate_subproblem_id(subproblem_id):
-        flash('Некорректный ID подпроблемы')
-        return redirect(url_for('admin_dashboard'))
+    # Не валидируем subproblem_id так как для простых мануалов он равен manual_id
+    # if not admin_manager.validate_subproblem_id(subproblem_id):
+    #     flash('Некорректный ID подпроблемы')
+    #     return redirect(url_for('admin_dashboard'))
 
     # Security Fix: Improved video upload validation
     allowed_video_types = {'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'}
@@ -1953,7 +3138,14 @@ def admin_upload_video():
         traceback.print_exc()
         flash('Ошибка при загрузке файла')
 
-    return redirect(url_for('admin_edit_manual', manual_id=manual_id))
+    # Редиректим правильно в зависимости от типа мануала
+    manual = admin_manager.get_manual(manual_id)
+    if manual and 'subproblems' in manual:
+        # Мануал с подпроблемами - редирект на страницу редактирования подпроблемы
+        return redirect(url_for('admin_edit_subproblem', manual_id=manual_id, subproblem_id=subproblem_id))
+    else:
+        # Простой мануал - редирект на страницу редактирования простого мануала
+        return redirect(url_for('admin_edit_simple_manual', manual_id=manual_id))
 
 
 # ============================================

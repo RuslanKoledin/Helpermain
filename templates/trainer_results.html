@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Результаты - Тренажер</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenHover: #009448;
+            --greenLight: #00d4aa;
+            --red: #f44336;
+            --orange: #ff9800;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            min-height: 100vh;
+            padding: 24px;
+            color: var(--text);
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Game Over Banner */
+        .game-over-banner {
+            background: linear-gradient(135deg, #f44336, #c62828);
+            border-radius: 16px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 30px rgba(244, 67, 54, 0.3);
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+
+        .game-over-banner .icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        .game-over-banner .title {
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .game-over-banner .subtitle {
+            font-size: 15px;
+            color: rgba(255,255,255,0.8);
+        }
+
+        /* Score Card */
+        .score-card {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .score-card.excellent {
+            border-color: rgba(76, 175, 80, 0.5);
+            background: linear-gradient(180deg, rgba(76, 175, 80, 0.1), var(--card2));
+        }
+
+        .score-card.good {
+            border-color: rgba(139, 195, 74, 0.5);
+            background: linear-gradient(180deg, rgba(139, 195, 74, 0.1), var(--card2));
+        }
+
+        .score-card.partial {
+            border-color: rgba(255, 152, 0, 0.5);
+            background: linear-gradient(180deg, rgba(255, 152, 0, 0.1), var(--card2));
+        }
+
+        .score-card.fail {
+            border-color: rgba(244, 67, 54, 0.5);
+            background: linear-gradient(180deg, rgba(244, 67, 54, 0.1), var(--card2));
+        }
+
+        .grade-icon {
+            font-size: 72px;
+            margin-bottom: 16px;
+            animation: bounceIn 0.6s ease;
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .grade-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .grade-message {
+            font-size: 15px;
+            color: var(--muted);
+            margin-bottom: 24px;
+        }
+
+        .score-display {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 20px;
+        }
+
+        .score-item {
+            text-align: center;
+        }
+
+        .score-value {
+            font-size: 42px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .score-card.excellent .score-value { color: #4CAF50; }
+        .score-card.good .score-value { color: #8BC34A; }
+        .score-card.partial .score-value { color: #FF9800; }
+        .score-card.fail .score-value { color: #F44336; }
+
+        .score-label {
+            font-size: 13px;
+            color: var(--muted);
+            margin-top: 6px;
+        }
+
+        .score-divider {
+            width: 1px;
+            background: var(--border);
+        }
+
+        /* Loyalty Badge */
+        .loyalty-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            padding: 10px 20px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+        }
+
+        .loyalty-badge.high {
+            border-color: rgba(76, 175, 80, 0.5);
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .loyalty-badge.medium {
+            border-color: rgba(255, 152, 0, 0.5);
+            background: rgba(255, 152, 0, 0.1);
+        }
+
+        .loyalty-badge.low {
+            border-color: rgba(244, 67, 54, 0.5);
+            background: rgba(244, 67, 54, 0.1);
+        }
+
+        .loyalty-badge .label {
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .loyalty-badge .value {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .scenario-info {
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .scenario-info strong {
+            color: var(--text);
+        }
+
+        /* Selected Topic */
+        .selected-topic {
+            margin-top: 15px;
+            padding: 12px 16px;
+            background: rgba(74, 144, 217, 0.1);
+            border: 1px solid rgba(74, 144, 217, 0.3);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .selected-topic .icon {
+            font-size: 20px;
+        }
+
+        .selected-topic .text {
+            font-size: 13px;
+            color: var(--text);
+        }
+
+        /* Details Section */
+        .details-section {
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .details-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .answer-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .answer-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .answer-status {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .answer-status.correct {
+            background: rgba(76, 175, 80, 0.2);
+        }
+
+        .answer-status.partial {
+            background: rgba(255, 152, 0, 0.2);
+        }
+
+        .answer-status.wrong {
+            background: rgba(244, 67, 54, 0.2);
+        }
+
+        .answer-status.timeout {
+            background: rgba(156, 39, 176, 0.2);
+        }
+
+        .answer-content {
+            flex: 1;
+        }
+
+        .answer-question {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+
+        .answer-text {
+            font-size: 14px;
+            color: var(--text);
+        }
+
+        .answer-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .answer-points {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--greenLight);
+            white-space: nowrap;
+        }
+
+        .answer-loyalty {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .answer-loyalty.positive {
+            color: #4CAF50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .answer-loyalty.negative {
+            color: #f44336;
+            background: rgba(244, 67, 54, 0.1);
+        }
+
+        /* Knowledge Link */
+        .knowledge-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #4A90D9;
+            text-decoration: none;
+            margin-top: 6px;
+            padding: 4px 10px;
+            background: rgba(74, 144, 217, 0.1);
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+
+        .knowledge-link:hover {
+            background: rgba(74, 144, 217, 0.2);
+        }
+
+        /* Error Analysis Section */
+        .error-analysis {
+            background: linear-gradient(180deg, rgba(244, 67, 54, 0.05), var(--card2));
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .error-analysis .details-title {
+            color: #f44336;
+        }
+
+        .error-item {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .error-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .error-question {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .error-given {
+            font-size: 14px;
+            color: #f44336;
+            padding: 10px 14px;
+            background: rgba(244, 67, 54, 0.1);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .error-given::before {
+            content: "Ваш ответ: ";
+            font-weight: 600;
+        }
+
+        .error-feedback {
+            font-size: 13px;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        /* Actions */
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .action-btn {
+            padding: 16px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(135deg, var(--green), var(--greenHover));
+            color: white;
+        }
+
+        .action-btn.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 166, 81, 0.3);
+        }
+
+        .action-btn.secondary {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .action-btn.secondary:hover {
+            background: var(--card2);
+        }
+
+        .actions-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .actions-row .action-btn {
+            flex: 1;
+        }
+
+        /* Confetti Animation */
+        .confetti-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            animation: fall 3s linear forwards;
+        }
+
+        @keyframes fall {
+            0% {
+                transform: translateY(-100px) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 16px;
+            }
+
+            .score-card {
+                padding: 30px 20px;
+            }
+
+            .grade-icon {
+                font-size: 56px;
+            }
+
+            .grade-title {
+                font-size: 24px;
+            }
+
+            .score-display {
+                gap: 24px;
+            }
+
+            .score-value {
+                font-size: 32px;
+            }
+
+            .actions-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    {% if result.grade == 'excellent' and not result.is_game_over %}
+    <div class="confetti-container" id="confetti"></div>
+    {% endif %}
+
+    <div class="container">
+        <!-- Game Over Banner -->
+        {% if result.is_game_over %}
+        <div class="game-over-banner">
+            <div class="icon">&#128542;</div>
+            <div class="title">Клиент бросил трубку</div>
+            <div class="subtitle">Уровень лояльности упал до критического значения</div>
+        </div>
+        {% endif %}
+
+        <!-- Score Card -->
+        <div class="score-card {{ result.grade }}">
+            <div class="grade-icon">{{ grade_info.icon }}</div>
+            <div class="grade-title">{{ grade_info.name }}</div>
+            <div class="grade-message">{{ grade_info.message }}</div>
+
+            <div class="score-display">
+                <div class="score-item">
+                    <div class="score-value">{{ result.percent }}%</div>
+                    <div class="score-label">Результат</div>
+                </div>
+                <div class="score-divider"></div>
+                <div class="score-item">
+                    <div class="score-value">{{ result.score }}</div>
+                    <div class="score-label">из {{ result.max_score }} баллов</div>
+                </div>
+            </div>
+
+            {% if result.final_loyalty is not none %}
+            <div class="loyalty-badge {% if result.final_loyalty >= 80 %}high{% elif result.final_loyalty >= 40 %}medium{% else %}low{% endif %}">
+                <span class="label">Финальная лояльность:</span>
+                <span class="value">{{ result.final_loyalty }}%</span>
+            </div>
+            {% endif %}
+
+            <div class="scenario-info">
+                <strong>{{ result.scenario_title }}</strong><br>
+                Уровень: {{ result.level_name }}
+                {% if result.timeout_count and result.timeout_count > 0 %}
+                <br><span style="color: var(--orange);">Пропущено ответов: {{ result.timeout_count }}</span>
+                {% endif %}
+            </div>
+
+            {% if result.selected_topic_name %}
+            <div class="selected-topic">
+                <span class="icon">&#128209;</span>
+                <span class="text">Выбрана тематика: <strong>{{ result.selected_topic_name }}</strong></span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Error Analysis (only wrong answers) -->
+        {% set wrong_answers = [] %}
+        {% for answer in answers_detail %}
+            {% if not answer.is_correct and not answer.is_partial %}
+                {% set _ = wrong_answers.append(answer) %}
+            {% endif %}
+        {% endfor %}
+
+        {% if wrong_answers %}
+        <div class="error-analysis">
+            <div class="details-title">
+                <span>&#128161;</span>
+                <span>Разбор ошибок</span>
+            </div>
+
+            {% for answer in answers_detail %}
+            {% if not answer.is_correct and not answer.is_partial %}
+            <div class="error-item">
+                <div class="error-question">Вопрос {{ answer.step_num }}</div>
+                <div class="error-given">{{ answer.answer_text }}</div>
+                {% if answer.feedback %}
+                <div class="error-feedback">{{ answer.feedback }}</div>
+                {% endif %}
+                {% if answer.knowledge_link %}
+                <a href="{{ answer.knowledge_link }}" class="knowledge-link" target="_blank">
+                    &#128218; Изучить в Базе Знаний
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Details -->
+        {% if answers_detail %}
+        <div class="details-section">
+            <div class="details-title">
+                <span>&#128221;</span>
+                <span>Детализация ответов</span>
+            </div>
+
+            {% for answer in answers_detail %}
+            <div class="answer-item">
+                <div class="answer-status {% if answer.is_timeout %}timeout{% elif answer.is_correct %}correct{% elif answer.is_partial %}partial{% else %}wrong{% endif %}">
+                    {% if answer.is_timeout %}&#9201;{% elif answer.is_correct %}&#10003;{% elif answer.is_partial %}~{% else %}&#10007;{% endif %}
+                </div>
+                <div class="answer-content">
+                    <div class="answer-question">Вопрос {{ answer.step_num }}</div>
+                    <div class="answer-text">{{ answer.answer_text }}</div>
+                    <div class="answer-meta">
+                        <span class="answer-points">+{{ answer.points }}</span>
+                        {% if answer.mood_impact %}
+                        <span class="answer-loyalty {% if answer.mood_impact > 0 %}positive{% else %}negative{% endif %}">
+                            {% if answer.mood_impact > 0 %}+{% endif %}{{ answer.mood_impact }}% лояльности
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if answer.knowledge_link and not answer.is_correct %}
+                    <a href="{{ answer.knowledge_link }}" class="knowledge-link" target="_blank">
+                        &#128218; База Знаний
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Actions -->
+        <div class="actions">
+            <a href="{{ url_for('trainer_play', scenario_id=result.scenario_id) }}" class="action-btn primary">
+                Пройти ещё раз
+            </a>
+            <div class="actions-row">
+                {% if next_scenario %}
+                <a href="{{ url_for('trainer_play', scenario_id=next_scenario.id) }}" class="action-btn secondary">
+                    Следующий сценарий
+                </a>
+                {% endif %}
+                <a href="{{ url_for('trainer_level', level_code=result.level_code) }}" class="action-btn secondary">
+                    К списку сценариев
+                </a>
+            </div>
+            <a href="{{ url_for('trainer_menu') }}" class="action-btn secondary">
+                В главное меню
+            </a>
+        </div>
+    </div>
+
+    {% if result.grade == 'excellent' and not result.is_game_over %}
+    <script>
+        // Confetti animation for excellent results
+        function createConfetti() {
+            const container = document.getElementById('confetti');
+            const colors = ['#4CAF50', '#8BC34A', '#00d4aa', '#FFD700', '#FF6B6B'];
+
+            for (let i = 0; i < 100; i++) {
+                setTimeout(() => {
+                    const confetti = document.createElement('div');
+                    confetti.className = 'confetti';
+                    confetti.style.left = Math.random() * 100 + 'vw';
+                    confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                    confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+                    confetti.style.animationDelay = Math.random() * 0.5 + 's';
+
+                    if (Math.random() > 0.5) {
+                        confetti.style.borderRadius = '50%';
+                    }
+
+                    container.appendChild(confetti);
+
+                    setTimeout(() => confetti.remove(), 4000);
+                }, i * 30);
+            }
+        }
+
+        createConfetti();
+    </script>
+    {% endif %}
+</body>
+</html>

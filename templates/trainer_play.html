@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ scenario.title }} - Тренажер</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            min-height: 100vh;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e8e8e8;
+            overflow: hidden;
+        }
+
+        /* Основной layout */
+        .game-container {
+            display: flex;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* Левая панель - Клиент */
+        .left-panel {
+            width: 220px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 15px;
+            background: rgba(26,26,46,0.8);
+            border-right: 2px solid #e94560;
+        }
+
+        .avatar-img {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid #e94560;
+            box-shadow: 0 0 20px rgba(233,69,96,0.5);
+            margin-bottom: 10px;
+        }
+
+        .avatar-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+
+        .avatar-role {
+            font-size: 12px;
+            color: #a8a8a8;
+            margin-bottom: 20px;
+        }
+
+        /* Шкала эмоций */
+        .emotion-container {
+            width: 100%;
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .emotion-label {
+            font-size: 12px;
+            color: #a8a8a8;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .emotion-value {
+            font-weight: 700;
+            color: #4CAF50;
+        }
+
+        .emotion-value.warning { color: #FF9800; }
+        .emotion-value.danger { color: #f44336; }
+
+        .emotion-bar-bg {
+            height: 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .emotion-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            border-radius: 6px;
+            transition: all 0.3s;
+            width: 0%;
+        }
+
+        .emotion-bar.warning {
+            background: linear-gradient(90deg, #FF9800, #FFC107);
+        }
+
+        .emotion-bar.danger {
+            background: linear-gradient(90deg, #f44336, #FF5722);
+        }
+
+        .emotion-face {
+            text-align: center;
+            font-size: 40px;
+            margin-top: 10px;
+        }
+
+        /* Центральная панель */
+        .center-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Верхняя панель */
+        .top-bar {
+            background: rgba(22,33,62,0.95);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #e94560;
+        }
+
+        .scenario-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .top-stats {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .score-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            color: #333;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 700;
+        }
+
+        .timer-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #4CAF50;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 700;
+        }
+
+        .timer-badge.warning { background: #FF9800; }
+        .timer-badge.danger { background: #f44336; animation: pulse 0.5s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .exit-btn {
+            background: #e94560;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .exit-btn:hover {
+            background: #d63a55;
+        }
+
+        /* Область диалога */
+        .dialog-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .dialog-area::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .dialog-area::-webkit-scrollbar-thumb {
+            background: rgba(233,69,96,0.5);
+            border-radius: 3px;
+        }
+
+        /* Облачко сообщения */
+        .speech-bubble {
+            padding: 15px 20px;
+            border-radius: 20px;
+            max-width: 70%;
+            font-size: 15px;
+            line-height: 1.5;
+            animation: bubbleIn 0.3s ease;
+            position: relative;
+        }
+
+        @keyframes bubbleIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Облачко клиента (зелёное, слева) */
+        .speech-bubble.client {
+            background: #4CAF50;
+            color: white;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+            margin-left: 10px;
+        }
+
+        .speech-bubble.client::before {
+            content: '';
+            position: absolute;
+            left: -10px;
+            bottom: 10px;
+            border: 10px solid transparent;
+            border-right-color: #4CAF50;
+            border-left: 0;
+        }
+
+        /* Облачко оператора (синее, справа) */
+        .speech-bubble.operator {
+            background: #2196F3;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+            margin-right: 10px;
+        }
+
+        .speech-bubble.operator::after {
+            content: '';
+            position: absolute;
+            right: -10px;
+            bottom: 10px;
+            border: 10px solid transparent;
+            border-left-color: #2196F3;
+            border-right: 0;
+        }
+
+        .speech-bubble.operator.wrong {
+            background: #e74c3c;
+        }
+
+        .speech-bubble.operator.wrong::after {
+            border-left-color: #e74c3c;
+        }
+
+        .speech-bubble.operator.partial {
+            background: #FF9800;
+        }
+
+        .speech-bubble.operator.partial::after {
+            border-left-color: #FF9800;
+        }
+
+        /* Область ответов */
+        .answers-area {
+            background: rgba(22,33,62,0.95);
+            padding: 15px 20px;
+            border-top: 2px solid #e94560;
+        }
+
+        .answers-title {
+            font-size: 13px;
+            color: #a8a8a8;
+            margin-bottom: 12px;
+        }
+
+        .answers-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .answer-btn {
+            background: rgba(33,150,243,0.1);
+            border: 2px solid #2196F3;
+            color: #fff;
+            padding: 12px 18px;
+            border-radius: 15px;
+            font-size: 14px;
+            line-height: 1.4;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .answer-btn:hover:not(.disabled) {
+            background: #2196F3;
+            transform: translateX(5px);
+        }
+
+        .answer-btn.disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        /* Правая панель - Специалист */
+        .right-panel {
+            width: 220px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 15px;
+            background: rgba(26,26,46,0.8);
+            border-left: 2px solid #4CAF50;
+        }
+
+        .specialist-avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3a3a5a, #2a2a4a);
+            border: 4px solid #4CAF50;
+            box-shadow: 0 0 20px rgba(76,175,80,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+
+        .specialist-avatar svg {
+            width: 80px;
+            height: 80px;
+        }
+
+        .right-panel .avatar-name {
+            color: #fff;
+        }
+
+        .scenario-info {
+            width: 100%;
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .info-label { color: #a8a8a8; }
+        .info-value { color: #fff; font-weight: 600; }
+
+        /* Модальные окна */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.show { display: flex; }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 450px;
+            border: 3px solid #e94560;
+        }
+
+        .modal-icon { font-size: 60px; margin-bottom: 15px; }
+        .modal-title { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 10px; }
+        .modal-text { font-size: 15px; color: #a8a8a8; margin-bottom: 25px; line-height: 1.5; }
+
+        .modal-btn {
+            background: #e94560;
+            color: white;
+            border: none;
+            padding: 12px 35px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .modal-content.success { border-color: #4CAF50; }
+        .modal-content.success .modal-btn { background: #4CAF50; }
+        .modal-content.warning { border-color: #FF9800; }
+        .modal-content.warning .modal-btn { background: #FF9800; }
+        .modal-content.fail { border-color: #f44336; }
+        .modal-content.fail .modal-btn { background: #f44336; }
+
+        /* Адаптивность */
+        @media (max-width: 900px) {
+            .left-panel, .right-panel { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <!-- Левая панель - Клиент -->
+        <div class="left-panel">
+            <img src="{{ url_for('static', filename='images/maxim_avatar.png') }}" alt="Максим" class="avatar-img" id="clientImg">
+            <div class="avatar-name">Максим</div>
+            <div class="avatar-role">Клиент</div>
+
+            <div class="emotion-container">
+                <div class="emotion-label">
+                    <span>Раздражение</span>
+                    <span class="emotion-value" id="emotionValue">0%</span>
+                </div>
+                <div class="emotion-bar-bg">
+                    <div class="emotion-bar" id="emotionBar"></div>
+                </div>
+                <div class="emotion-face" id="emotionFace">😊</div>
+            </div>
+        </div>
+
+        <!-- Центральная панель -->
+        <div class="center-panel">
+            <div class="top-bar">
+                <div class="scenario-title">{{ scenario.title }}</div>
+                <div class="top-stats">
+                    <div class="score-badge">⭐ <span id="scoreValue">0</span></div>
+                    <div class="timer-badge" id="timerBadge">⏱️ <span id="timerValue">{{ scenario.timer_seconds or 15 }}</span>с</div>
+                </div>
+                <a href="{{ url_for('trainer_menu') }}" class="exit-btn">✕ Выход</a>
+            </div>
+
+            <div class="dialog-area" id="dialogArea">
+                <!-- Сообщения добавляются динамически -->
+            </div>
+
+            <div class="answers-area" id="answersArea">
+                <div class="answers-title">Выберите ответ:</div>
+                <div class="answers-list" id="answersList">
+                    <!-- Ответы добавляются динамически -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Правая панель - Специалист -->
+        <div class="right-panel">
+            <div class="specialist-avatar">
+                <svg viewBox="0 0 100 100" fill="none">
+                    <circle cx="50" cy="40" r="25" fill="#5a5a7a"/>
+                    <path d="M25 95 Q25 65 50 60 Q75 65 75 95" fill="#5a5a7a"/>
+                    <path d="M28 38 Q28 18 50 15 Q72 18 72 38" stroke="#888" stroke-width="4" fill="none"/>
+                    <rect x="20" y="32" width="12" height="18" rx="4" fill="#666"/>
+                    <rect x="68" y="32" width="12" height="18" rx="4" fill="#666"/>
+                    <path d="M32 42 Q22 55 30 62" stroke="#666" stroke-width="3" fill="none"/>
+                    <circle cx="30" cy="62" r="4" fill="#666"/>
+                </svg>
+            </div>
+            <div class="avatar-name">Специалист</div>
+            <div class="avatar-role">Оператор</div>
+
+            <div class="scenario-info">
+                <div class="info-row">
+                    <span class="info-label">Шаг:</span>
+                    <span class="info-value"><span id="currentStep">1</span> / {{ total_steps }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Баллы:</span>
+                    <span class="info-value" id="pointsInfo">0 / {{ scenario.total_points }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over -->
+    <div class="modal-overlay" id="gameOverModal">
+        <div class="modal-content">
+            <div class="modal-icon">😤</div>
+            <div class="modal-title">Клиент бросил трубку!</div>
+            <div class="modal-text">Уровень раздражения достиг максимума.</div>
+            <a href="{{ url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">Вернуться</a>
+        </div>
+    </div>
+
+    <!-- Результат -->
+    <div class="modal-overlay" id="resultModal">
+        <div class="modal-content" id="resultModalContent">
+            <div class="modal-icon" id="resultIcon">🎉</div>
+            <div class="modal-title" id="resultTitle">Отлично!</div>
+            <div class="modal-text" id="resultText">Диалог завершён!</div>
+            <a href="{{ url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">Продолжить</a>
+        </div>
+    </div>
+
+    <script>
+        const scenarioId = {{ scenario.id }};
+        const totalSteps = {{ total_steps }};
+        const timerSeconds = {{ scenario.timer_seconds or 15 }};
+        const totalPoints = {{ scenario.total_points }};
+        const csrfToken = '{{ csrf_token() }}';
+
+        let currentStepNum = 0;
+        let score = 0;
+        let emotion = 0;
+        let timer = null;
+        let timeLeft = timerSeconds;
+        let emotionTimer = null;
+        let answersHistory = [];
+
+        const dialogArea = document.getElementById('dialogArea');
+        const answersList = document.getElementById('answersList');
+        const emotionBar = document.getElementById('emotionBar');
+        const emotionValue = document.getElementById('emotionValue');
+        const emotionFace = document.getElementById('emotionFace');
+        const timerValue = document.getElementById('timerValue');
+        const timerBadge = document.getElementById('timerBadge');
+        const scoreValue = document.getElementById('scoreValue');
+        const currentStepEl = document.getElementById('currentStep');
+        const pointsInfo = document.getElementById('pointsInfo');
+        const clientImg = document.getElementById('clientImg');
+
+        // Загрузка первого шага
+        loadStep(1);
+
+        async function loadStep(stepNum) {
+            currentStepNum = stepNum;
+            currentStepEl.textContent = stepNum;
+
+            try {
+                const response = await fetch(`/api/trainer/step/${scenarioId}/${stepNum}`);
+                const data = await response.json();
+
+                console.log('Step data:', data);
+
+                if (!data.success) {
+                    console.error('Error:', data.error);
+                    return;
+                }
+
+                // Добавляем сообщение клиента
+                addBubble(data.step.client_message, 'client');
+
+                // Показываем ответы
+                showAnswers(data.step.answers);
+
+                // Таймеры
+                startTimer();
+                startEmotionTimer();
+
+                scrollToBottom();
+            } catch (error) {
+                console.error('Fetch error:', error);
+            }
+        }
+
+        function addBubble(text, type, isWrong = false, isPartial = false) {
+            const bubble = document.createElement('div');
+            let classes = `speech-bubble ${type}`;
+            if (isWrong) classes += ' wrong';
+            if (isPartial) classes += ' partial';
+            bubble.className = classes;
+            bubble.textContent = text;
+            dialogArea.appendChild(bubble);
+        }
+
+        function showAnswers(answers) {
+            answersList.innerHTML = '';
+
+            if (!answers || answers.length === 0) {
+                answersList.innerHTML = '<div style="color:#888">Нет вариантов ответа</div>';
+                return;
+            }
+
+            answers.forEach((answer) => {
+                const btn = document.createElement('button');
+                btn.className = 'answer-btn';
+                btn.textContent = answer.answer_text;
+                btn.onclick = () => selectAnswer(answer);
+                answersList.appendChild(btn);
+            });
+        }
+
+        async function selectAnswer(answer) {
+            stopTimer();
+            stopEmotionTimer();
+
+            document.querySelectorAll('.answer-btn').forEach(btn => btn.classList.add('disabled'));
+
+            // Отправляем на сервер и получаем результат
+            try {
+                const response = await fetch('/api/trainer/answer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({
+                        scenario_id: scenarioId,
+                        step_num: currentStepNum,
+                        answer_id: answer.id,
+                        current_loyalty: 100 - emotion
+                    })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    const isWrong = !result.is_correct && !result.is_partial;
+                    const isPartial = result.is_partial;
+                    addBubble(answer.answer_text, 'operator', isWrong, isPartial);
+
+                    // Эмоция (инвертируем mood_impact, т.к. у нас шкала раздражения)
+                    let change = result.is_correct ? -15 : (result.is_partial ? 5 : 25);
+                    updateEmotion(change);
+
+                    // Очки
+                    score += result.points_earned || 0;
+                    scoreValue.textContent = score;
+                    pointsInfo.textContent = `${score} / ${totalPoints}`;
+
+                    answersHistory.push({
+                        step: currentStepNum,
+                        answer_id: answer.id,
+                        is_correct: result.is_correct,
+                        points: result.points_earned
+                    });
+
+                    if (emotion >= 100 || result.is_game_over) {
+                        showGameOver();
+                        return;
+                    }
+                } else {
+                    // Ошибка API - просто показываем ответ
+                    addBubble(answer.answer_text, 'operator');
+                }
+            } catch (e) {
+                console.error(e);
+                addBubble(answer.answer_text, 'operator');
+            }
+
+            scrollToBottom();
+
+            setTimeout(() => {
+                if (currentStepNum < totalSteps) {
+                    loadStep(currentStepNum + 1);
+                } else {
+                    showSuccess();
+                }
+            }, 1000);
+        }
+
+        function startTimer() {
+            timeLeft = timerSeconds;
+            timerValue.textContent = timeLeft;
+            timerBadge.className = 'timer-badge';
+
+            timer = setInterval(() => {
+                timeLeft--;
+                timerValue.textContent = timeLeft;
+                if (timeLeft <= 5) timerBadge.className = 'timer-badge danger';
+                else if (timeLeft <= 10) timerBadge.className = 'timer-badge warning';
+                if (timeLeft <= 0) handleTimeout();
+            }, 1000);
+        }
+
+        function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
+
+        function startEmotionTimer() {
+            emotionTimer = setInterval(() => updateEmotion(2), 2000);
+        }
+
+        function stopEmotionTimer() { if (emotionTimer) { clearInterval(emotionTimer); emotionTimer = null; } }
+
+        function handleTimeout() {
+            stopTimer();
+            stopEmotionTimer();
+            updateEmotion(20);
+            addBubble("...", 'operator', true);
+
+            if (emotion >= 100) { showGameOver(); return; }
+
+            setTimeout(() => {
+                if (currentStepNum < totalSteps) loadStep(currentStepNum + 1);
+                else showSuccess();
+            }, 1500);
+        }
+
+        function updateEmotion(change) {
+            emotion = Math.max(0, Math.min(100, emotion + change));
+            emotionBar.style.width = emotion + '%';
+            emotionValue.textContent = emotion + '%';
+
+            if (emotion >= 70) {
+                emotionBar.className = 'emotion-bar danger';
+                emotionValue.className = 'emotion-value danger';
+                emotionFace.textContent = '😡';
+                clientImg.style.filter = 'hue-rotate(-30deg) saturate(1.5)';
+            } else if (emotion >= 40) {
+                emotionBar.className = 'emotion-bar warning';
+                emotionValue.className = 'emotion-value warning';
+                emotionFace.textContent = '😤';
+                clientImg.style.filter = 'hue-rotate(-15deg)';
+            } else if (emotion >= 20) {
+                emotionBar.className = 'emotion-bar';
+                emotionValue.className = 'emotion-value';
+                emotionFace.textContent = '😐';
+                clientImg.style.filter = '';
+            } else {
+                emotionBar.className = 'emotion-bar';
+                emotionValue.className = 'emotion-value';
+                emotionFace.textContent = '😊';
+                clientImg.style.filter = '';
+            }
+        }
+
+        function scrollToBottom() {
+            setTimeout(() => { dialogArea.scrollTop = dialogArea.scrollHeight; }, 100);
+        }
+
+        function showGameOver() {
+            document.getElementById('gameOverModal').classList.add('show');
+            saveResult(true);
+        }
+
+        function showSuccess() {
+            const percent = Math.round((score / totalPoints) * 100);
+            const modal = document.getElementById('resultModal');
+            const content = document.getElementById('resultModalContent');
+            const icon = document.getElementById('resultIcon');
+            const title = document.getElementById('resultTitle');
+            const text = document.getElementById('resultText');
+
+            if (percent >= 80) {
+                // Отлично
+                icon.textContent = '🎉';
+                title.textContent = 'Отлично!';
+                text.textContent = `Вы набрали ${score} из ${totalPoints} баллов (${percent}%). Превосходный результат!`;
+                content.className = 'modal-content success';
+            } else if (percent >= 60) {
+                // Хорошо
+                icon.textContent = '👍';
+                title.textContent = 'Хорошо!';
+                text.textContent = `Вы набрали ${score} из ${totalPoints} баллов (${percent}%). Неплохой результат, но есть над чем поработать.`;
+                content.className = 'modal-content success';
+            } else if (percent >= 40) {
+                // Удовлетворительно
+                icon.textContent = '😐';
+                title.textContent = 'Удовлетворительно';
+                text.textContent = `Вы набрали ${score} из ${totalPoints} баллов (${percent}%). Рекомендуем повторить материал.`;
+                content.className = 'modal-content warning';
+            } else {
+                // Плохо
+                icon.textContent = '😔';
+                title.textContent = 'К сожалению...';
+                text.textContent = `Вы набрали ${score} из ${totalPoints} баллов (${percent}%). Результат ниже ожидаемого. Попробуйте ещё раз!`;
+                content.className = 'modal-content fail';
+            }
+
+            modal.classList.add('show');
+            saveResult(false);
+        }
+
+        async function saveResult(isGameOver) {
+            try {
+                await fetch('/api/trainer/complete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({
+                        scenario_id: scenarioId,
+                        score: score,
+                        answers: answersHistory,
+                        is_game_over: isGameOver,
+                        final_loyalty: 100 - emotion
+                    })
+                });
+            } catch (e) { console.error(e); }
+        }
+    </script>
+</body>
+</html>
