@@ -29,3 +29,12 @@ __pycache__/
 
 # Архивы
 *.zip
+
+# Скрипты автообновления (локальные)
+auto_update.ps1
+start_auto_update.bat
+update_log.txt
+
+# Windows reserved names
+nul
+cookies.txt

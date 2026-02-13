@@ -9,6 +9,7 @@ import telebot
 import werkzeug.routing
 import traceback
 import re
+import json
 from html import escape as html_escape
 from functools import wraps
 from time import time
@@ -1304,18 +1305,28 @@ def trainer_level(level_code):
 @app.route('/trainer/play/<int:scenario_id>')
 def trainer_play(scenario_id):
     """Страница прохождения сценария"""
-    if 'user_info' not in session or not session.get('authenticated'):
-        return redirect(url_for('user_login'))
+    # Check for preview mode
+    preview_mode = request.args.get('preview') == '1'
 
-    user_id = session['user_info'].get('username', 'anonymous')
+    # In preview mode, admin must be logged in
+    if preview_mode:
+        if not session.get('admin_logged_in'):
+            flash('Доступ запрещён')
+            return redirect(url_for('admin_login'))
+    else:
+        # Regular mode - user must be authenticated
+        if 'user_info' not in session or not session.get('authenticated'):
+            return redirect(url_for('user_login'))
+
+    user_id = session.get('user_info', {}).get('username', 'admin_preview') if not preview_mode else 'admin_preview'
     scenario = trainer_mgr.get_scenario(scenario_id)
 
     if not scenario:
         flash('Сценарий не найден')
-        return redirect(url_for('trainer_menu'))
+        return redirect(url_for('trainer_menu') if not preview_mode else url_for('admin_trainer'))
 
-    # Проверяем доступ к уровню
-    if not trainer_mgr.check_level_unlocked(user_id, scenario['level_code']):
+    # Check level access (skip in preview mode)
+    if not preview_mode and not trainer_mgr.check_level_unlocked(user_id, scenario['level_code']):
         flash('Этот уровень ещё заблокирован')
         return redirect(url_for('trainer_menu'))
 
@@ -1323,11 +1334,12 @@ def trainer_play(scenario_id):
 
     if total_steps == 0:
         flash('В этом сценарии пока нет шагов')
-        return redirect(url_for('trainer_level', level_code=scenario['level_code']))
+        return redirect(url_for('admin_trainer_edit', scenario_id=scenario_id) if preview_mode else url_for('trainer_level', level_code=scenario['level_code']))
 
     return render_template('trainer_play.html',
                          scenario=scenario,
-                         total_steps=total_steps)
+                         total_steps=total_steps,
+                         preview_mode=preview_mode)
 
 
 @app.route('/api/trainer/step/<int:scenario_id>/<int:step_num>')
@@ -1358,7 +1370,6 @@ def trainer_get_step(scenario_id, step_num):
     client_info = None
     if scenario and scenario.get('client_info_json'):
         try:
-            import json
             client_info = json.loads(scenario['client_info_json'])
         except:
             pass
@@ -1569,10 +1580,12 @@ def admin_trainer():
     stats = trainer_mgr.get_statistics()
     levels = trainer_mgr.get_all_levels()
     categories = trainer_mgr.get_all_categories()
+    tags = trainer_mgr.get_all_tags()
 
     # Фильтры
     level_code = request.args.get('level')
     category_id = request.args.get('category', type=int)
+    tag_id = request.args.get('tag', type=int)
 
     scenarios = trainer_mgr.get_all_scenarios(include_inactive=True)
 
@@ -1582,17 +1595,24 @@ def admin_trainer():
     if category_id:
         scenarios = [s for s in scenarios if s['category_id'] == category_id]
 
-    # Добавляем количество шагов
+    # Добавляем количество шагов и теги
     for scenario in scenarios:
         scenario['steps_count'] = trainer_mgr.get_steps_count(scenario['id'])
+        scenario['tags'] = trainer_mgr.get_scenario_tags(scenario['id'])
+
+    # Фильтр по тегу (после получения тегов)
+    if tag_id:
+        scenarios = [s for s in scenarios if any(t['id'] == tag_id for t in s['tags'])]
 
     return render_template('admin_trainer.html',
                          stats=stats,
                          levels=levels,
                          categories=categories,
+                         tags=tags,
                          scenarios=scenarios,
                          current_level=level_code,
-                         current_category=category_id)
+                         current_category=category_id,
+                         current_tag=tag_id)
 
 
 @app.route('/admin/trainer/scenario/create', methods=['GET', 'POST'])
@@ -1616,17 +1636,30 @@ def admin_trainer_create():
 
         if not data['title']:
             flash('Название обязательно')
-            return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[])
+            tags = trainer_mgr.get_all_tags()
+            return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[], tags=tags, scenario_tag_ids=[])
 
         result = trainer_mgr.create_scenario(data)
 
         if result['success']:
+            # Логируем создание (берём AD учётку пользователя)
+            user_info = session.get('user_info', {})
+            trainer_mgr.log_action(
+                user_id=user_info.get('username') or user_info.get('name', 'admin'),
+                action='create',
+                entity_type='scenario',
+                entity_id=result['id'],
+                entity_name=data['title'],
+                changes=data,
+                ip_address=request.remote_addr
+            )
             flash('Сценарий успешно создан!')
             return redirect(url_for('admin_trainer_edit', scenario_id=result['id']))
         else:
             flash(f'Ошибка: {result.get("error")}')
 
-    return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[])
+    tags = trainer_mgr.get_all_tags()
+    return render_template('admin_trainer_edit.html', scenario=None, levels=levels, categories=categories, steps=[], tags=tags, scenario_tag_ids=[])
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/edit', methods=['GET', 'POST'])
@@ -1656,7 +1689,6 @@ def admin_trainer_edit(scenario_id):
         client_extra = request.form.get('client_extra', '').strip()
         if client_extra:
             try:
-                import json
                 extra_data = json.loads(client_extra)
                 client_info.update(extra_data)
             except:
@@ -1682,6 +1714,23 @@ def admin_trainer_edit(scenario_id):
         result = trainer_mgr.update_scenario(scenario_id, data)
 
         if result['success']:
+            # Сохраняем теги
+            tag_ids = request.form.getlist('tags')
+            tag_ids = [int(t) for t in tag_ids if t.isdigit()]
+            trainer_mgr.set_scenario_tags(scenario_id, tag_ids)
+
+            # Логируем изменение (берём AD учётку пользователя)
+            user_info = session.get('user_info', {})
+            trainer_mgr.log_action(
+                user_id=user_info.get('username') or user_info.get('name', 'admin'),
+                action='edit',
+                entity_type='scenario',
+                entity_id=scenario_id,
+                entity_name=data['title'],
+                changes=data,
+                ip_address=request.remote_addr
+            )
+
             # Обновляем шаги и ответы
             for key in request.form:
                 # Обновление шагов
@@ -1724,7 +1773,6 @@ def admin_trainer_edit(scenario_id):
     client_extra = None
     if scenario.get('client_info_json'):
         try:
-            import json
             client_info = json.loads(scenario['client_info_json'])
             # Отделяем стандартные поля от дополнительных
             standard_fields = ['name', 'tariff', 'balance']
@@ -1734,22 +1782,43 @@ def admin_trainer_edit(scenario_id):
         except:
             pass
 
+    # Получаем теги
+    tags = trainer_mgr.get_all_tags()
+    scenario_tags = trainer_mgr.get_scenario_tags(scenario_id)
+    scenario_tag_ids = [t['id'] for t in scenario_tags]
+
     return render_template('admin_trainer_edit.html',
                          scenario=scenario,
                          levels=levels,
                          categories=categories,
                          steps=steps,
                          client_info=client_info,
-                         client_extra=client_extra)
+                         client_extra=client_extra,
+                         tags=tags,
+                         scenario_tag_ids=scenario_tag_ids)
 
 
 @app.route('/admin/trainer/scenario/<int:scenario_id>/delete', methods=['POST'])
 @AdminAuth.login_required
 def admin_trainer_delete(scenario_id):
     """Удаление сценария"""
+    # Получаем информацию о сценарии перед удалением
+    scenario = trainer_mgr.get_scenario(scenario_id)
+    scenario_title = scenario['title'] if scenario else f"ID {scenario_id}"
+
     result = trainer_mgr.delete_scenario(scenario_id)
 
     if result['success']:
+        # Логируем удаление (берём AD учётку пользователя)
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='delete',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario_title,
+            ip_address=request.remote_addr
+        )
         flash('Сценарий удален')
     else:
         flash(f'Ошибка: {result.get("error")}')
@@ -1955,6 +2024,18 @@ def admin_trainer_visual_save(scenario_id):
         )
         trainer_mgr.conn.commit()
 
+        # Логируем изменение через визуальный редактор (берём AD учётку)
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='edit',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=scenario['title'],
+            changes={'source': 'visual_editor', 'steps_count': len(client_nodes)},
+            ip_address=request.remote_addr
+        )
+
         return jsonify({'success': True, 'message': 'Сценарий сохранен'})
 
     except Exception as e:
@@ -2061,6 +2142,57 @@ def admin_trainer_stats():
     return render_template('admin_trainer_stats.html', stats=stats)
 
 
+# ============================================
+# ТЕГИ СЦЕНАРИЕВ
+# ============================================
+
+@app.route('/admin/trainer/tags', methods=['GET', 'POST'])
+@AdminAuth.login_required
+def admin_trainer_tags():
+    """Получить все теги или создать новый"""
+    if request.method == 'GET':
+        tags = trainer_mgr.get_all_tags()
+        return jsonify({'success': True, 'tags': tags})
+
+    # POST - создать тег
+    data = request.get_json()
+    name = data.get('name', '').strip()
+
+    if not name:
+        return jsonify({'success': False, 'error': 'Название обязательно'})
+
+    # Генерируем случайный цвет
+    import random
+    colors = ['#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#00BCD4', '#795548', '#E91E63', '#607D8B']
+    icons = ['🏷️', '📌', '⭐', '🔖', '📋', '🎯']
+
+    result = trainer_mgr.create_tag(
+        name=name,
+        color=random.choice(colors),
+        icon=random.choice(icons)
+    )
+
+    if result['success']:
+        tag = trainer_mgr.get_tag_by_id(result['id'])
+        return jsonify({'success': True, 'tag': tag})
+
+    return jsonify(result)
+
+
+@app.route('/admin/trainer/tags/<int:tag_id>', methods=['PUT', 'DELETE'])
+@AdminAuth.login_required
+def admin_trainer_tag_detail(tag_id):
+    """Обновить или удалить тег"""
+    if request.method == 'DELETE':
+        result = trainer_mgr.delete_tag(tag_id)
+        return jsonify(result)
+
+    # PUT - обновить
+    data = request.get_json()
+    result = trainer_mgr.update_tag(tag_id, data)
+    return jsonify(result)
+
+
 @app.route('/admin/trainer/export')
 @AdminAuth.login_required
 def admin_trainer_export():
@@ -2072,6 +2204,8 @@ def admin_trainer_export():
         import pandas as pd
 
         stats = trainer_mgr.get_statistics()
+        users_progress = trainer_mgr.get_all_users_progress()
+        detailed_results = trainer_mgr.get_detailed_results()
 
         # Создаем Excel файл
         tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
@@ -2079,30 +2213,61 @@ def admin_trainer_export():
         tmp_file.close()
 
         with pd.ExcelWriter(tmp_path, engine='openpyxl') as writer:
-            # Общая статистика
+            # Лист 1: Общая статистика
             general_df = pd.DataFrame([{
                 'Всего сценариев': stats['total_scenarios'],
                 'Всего прохождений': stats['total_completions'],
                 'Уникальных пользователей': stats['unique_users'],
-                'Средний балл': stats['avg_score']
+                'Средний балл (%)': stats['avg_score']
             }])
-            general_df.to_excel(writer, sheet_name='Общая', index=False)
+            general_df.to_excel(writer, sheet_name='Общая статистика', index=False)
 
-            # Статистика по уровням
-            levels_df = pd.DataFrame(stats['levels'])
-            levels_df.to_excel(writer, sheet_name='По уровням', index=False)
+            # Лист 2: Прогресс сотрудников
+            if users_progress:
+                users_df = pd.DataFrame(users_progress)
+                users_df.columns = [
+                    'Сотрудник',
+                    'Всего прохождений',
+                    'Уникальных сценариев',
+                    'Средний балл (%)',
+                    'Лучший результат (%)',
+                    'Первое прохождение',
+                    'Последнее прохождение',
+                    'Отлично (80%+)',
+                    'Хорошо (60-79%)',
+                    'Требует работы (<60%)'
+                ]
+                users_df.to_excel(writer, sheet_name='Прогресс сотрудников', index=False)
 
-            # Топ пользователей
-            if stats['top_users']:
-                users_df = pd.DataFrame(stats['top_users'])
-                users_df.columns = ['Пользователь', 'Прохождений', 'Средний балл']
-                users_df.to_excel(writer, sheet_name='Рейтинг', index=False)
+            # Лист 3: Детальные результаты
+            if detailed_results:
+                results_df = pd.DataFrame(detailed_results)
+                results_df.columns = [
+                    'Сотрудник',
+                    'Сценарий',
+                    'Уровень',
+                    'Баллы',
+                    'Макс. баллов',
+                    'Процент (%)',
+                    'Дата прохождения',
+                    'Game Over',
+                    'Лояльность клиента'
+                ]
+                # Преобразуем Game Over в понятный формат
+                results_df['Game Over'] = results_df['Game Over'].apply(lambda x: 'Да' if x else 'Нет')
+                results_df.to_excel(writer, sheet_name='Все прохождения', index=False)
+
+            # Лист 4: Статистика по уровням
+            if stats['levels']:
+                levels_df = pd.DataFrame(stats['levels'])
+                levels_df.columns = ['Уровень', 'Код', 'Сценариев', 'Прохождений', 'Средний балл (%)']
+                levels_df.to_excel(writer, sheet_name='По уровням', index=False)
 
         return send_file(
             tmp_path,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'trainer_stats_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            download_name=f'trainer_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
         )
 
     except Exception as e:
@@ -2110,6 +2275,394 @@ def admin_trainer_export():
         traceback.print_exc()
         flash('Ошибка экспорта')
         return redirect(url_for('admin_trainer_stats'))
+
+
+@app.route('/admin/trainer/audit')
+@AdminAuth.login_required
+def admin_trainer_audit():
+    """Журнал изменений (аудит)"""
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    logs = trainer_mgr.get_audit_log(limit=per_page, offset=offset)
+    stats = trainer_mgr.get_audit_stats()
+
+    return render_template('admin_trainer_audit.html', logs=logs, stats=stats, page=page)
+
+
+@app.route('/admin/trainer/audit/export')
+@AdminAuth.login_required
+def admin_trainer_audit_export():
+    """Экспорт журнала аудита в Excel"""
+    try:
+        import tempfile
+        from flask import send_file
+        from datetime import datetime
+        import pandas as pd
+
+        logs = trainer_mgr.get_audit_log(limit=10000)
+
+        # Создаем Excel файл
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        tmp_path = tmp_file.name
+        tmp_file.close()
+
+        if logs:
+            df = pd.DataFrame([{
+                'Дата/время': log['timestamp'],
+                'Пользователь': log['user_id'],
+                'Действие': log['action'],
+                'Тип': log['entity_type'],
+                'ID объекта': log['entity_id'],
+                'Название': log['entity_name'],
+                'IP адрес': log['ip_address']
+            } for log in logs])
+            df.to_excel(tmp_path, index=False, sheet_name='Журнал аудита')
+        else:
+            pd.DataFrame([{'Сообщение': 'Нет записей'}]).to_excel(tmp_path, index=False)
+
+        return send_file(
+            tmp_path,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'audit_log_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+
+    except Exception as e:
+        print(f"[admin_trainer_audit_export] Ошибка: {e}")
+        flash('Ошибка экспорта')
+        return redirect(url_for('admin_trainer_audit'))
+
+
+# ============================================
+# ИМПОРТ СЦЕНАРИЕВ ИЗ EXCEL
+# ============================================
+
+@app.route('/admin/trainer/import')
+@AdminAuth.login_required
+def admin_trainer_import():
+    """Страница импорта сценариев"""
+    return render_template('admin_trainer_import.html')
+
+
+@app.route('/admin/trainer/import/template')
+@AdminAuth.login_required
+def admin_trainer_import_template():
+    """Скачать шаблон Excel для импорта"""
+    import tempfile
+    from flask import send_file
+    import pandas as pd
+
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+    tmp_path = tmp_file.name
+    tmp_file.close()
+
+    with pd.ExcelWriter(tmp_path, engine='openpyxl') as writer:
+        # Лист 1: Сценарий
+        scenario_df = pd.DataFrame([{
+            'Название': 'Пример сценария',
+            'Описание': 'Описание ситуации',
+            'Уровень': 'basic',
+            'Теги': 'Карты, Переводы',
+            'Время на ответ (сек)': 15,
+            'Клиент: Имя': 'Иван Петров',
+            'Клиент: Баланс': '5 000 руб.'
+        }])
+        scenario_df.to_excel(writer, sheet_name='Сценарий', index=False)
+
+        # Лист 2: Шаги
+        steps_df = pd.DataFrame([
+            {'Номер шага': 1, 'Сообщение клиента': 'Здравствуйте! У меня проблема...', 'Эмоция': 'neutral'},
+            {'Номер шага': 2, 'Сообщение клиента': 'Всё ещё не работает!', 'Эмоция': 'irritation'}
+        ])
+        steps_df.to_excel(writer, sheet_name='Шаги', index=False)
+
+        # Лист 3: Ответы
+        answers_df = pd.DataFrame([
+            {'Номер шага': 1, 'Текст ответа': 'Добрый день! Давайте разберёмся.', 'Тип': 'correct', 'Баллы': 10, 'Влияние': 10, 'Feedback': 'Отличное приветствие!'},
+            {'Номер шага': 1, 'Текст ответа': 'Что случилось?', 'Тип': 'partial', 'Баллы': 5, 'Влияние': 0, 'Feedback': 'Можно вежливее'},
+            {'Номер шага': 1, 'Текст ответа': 'Ждите.', 'Тип': 'wrong', 'Баллы': 0, 'Влияние': -20, 'Feedback': 'Грубый ответ'},
+            {'Номер шага': 2, 'Текст ответа': 'Понимаю вас, сейчас решим!', 'Тип': 'correct', 'Баллы': 10, 'Влияние': 10, 'Feedback': 'Хорошо!'}
+        ])
+        answers_df.to_excel(writer, sheet_name='Ответы', index=False)
+
+    return send_file(
+        tmp_path,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='trainer_import_template.xlsx'
+    )
+
+
+@app.route('/admin/trainer/import/preview', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_import_preview():
+    """Превью импортируемого файла"""
+    import pandas as pd
+
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Файл не загружен'})
+
+    file = request.files['file']
+
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        return jsonify({'success': False, 'error': 'Поддерживаются только файлы Excel'})
+
+    try:
+        # Читаем Excel
+        xlsx = pd.ExcelFile(file)
+
+        # Проверяем наличие листов
+        required_sheets = ['Сценарий', 'Шаги', 'Ответы']
+        missing = [s for s in required_sheets if s not in xlsx.sheet_names]
+        if missing:
+            return jsonify({'success': False, 'errors': [f'Отсутствуют листы: {", ".join(missing)}']})
+
+        # Читаем данные
+        scenario_df = pd.read_excel(xlsx, 'Сценарий')
+        steps_df = pd.read_excel(xlsx, 'Шаги')
+        answers_df = pd.read_excel(xlsx, 'Ответы')
+
+        # Валидация сценария
+        errors = []
+        if scenario_df.empty:
+            errors.append('Лист "Сценарий" пустой')
+        if steps_df.empty:
+            errors.append('Лист "Шаги" пустой')
+
+        if errors:
+            return jsonify({'success': False, 'errors': errors})
+
+        # Парсим данные
+        scenario_row = scenario_df.iloc[0]
+
+        title = str(scenario_row.get('Название', '')).strip()
+        if not title or title == 'nan':
+            errors.append('Название сценария обязательно')
+            return jsonify({'success': False, 'errors': errors})
+
+        description = str(scenario_row.get('Описание', '')).strip()
+        if description == 'nan':
+            description = ''
+
+        level = str(scenario_row.get('Уровень', 'basic')).strip().lower()
+        if level not in ['basic', 'medium', 'advanced', 'hard']:
+            level = 'basic'
+
+        tags = str(scenario_row.get('Теги', '')).strip()
+        if tags == 'nan':
+            tags = ''
+
+        timer = scenario_row.get('Время на ответ (сек)', 15)
+        try:
+            timer = int(timer)
+        except:
+            timer = 15
+
+        client_name = str(scenario_row.get('Клиент: Имя', '')).strip()
+        if client_name == 'nan':
+            client_name = ''
+
+        client_balance = str(scenario_row.get('Клиент: Баланс', '')).strip()
+        if client_balance == 'nan':
+            client_balance = ''
+
+        # Парсим шаги
+        steps = []
+        for _, row in steps_df.iterrows():
+            step_num = row.get('Номер шага', 0)
+            try:
+                step_num = int(step_num)
+            except:
+                continue
+
+            message = str(row.get('Сообщение клиента', '')).strip()
+            if not message or message == 'nan':
+                continue
+
+            mood = str(row.get('Эмоция', 'neutral')).strip().lower()
+            if mood not in ['neutral', 'anger', 'irritation', 'satisfaction', 'delight']:
+                mood = 'neutral'
+
+            # Получаем ответы для этого шага
+            step_answers = []
+            for _, ans_row in answers_df[answers_df['Номер шага'] == step_num].iterrows():
+                ans_text = str(ans_row.get('Текст ответа', '')).strip()
+                if not ans_text or ans_text == 'nan':
+                    continue
+
+                ans_type = str(ans_row.get('Тип', 'wrong')).strip().lower()
+                if ans_type not in ['correct', 'partial', 'wrong']:
+                    ans_type = 'wrong'
+
+                points = ans_row.get('Баллы', 0)
+                try:
+                    points = int(points)
+                except:
+                    points = 0
+
+                impact = ans_row.get('Влияние', 0)
+                try:
+                    impact = int(impact)
+                except:
+                    impact = 0
+
+                feedback = str(ans_row.get('Feedback', '')).strip()
+                if feedback == 'nan':
+                    feedback = ''
+
+                step_answers.append({
+                    'text': ans_text,
+                    'type': ans_type,
+                    'points': points,
+                    'impact': impact,
+                    'feedback': feedback
+                })
+
+            steps.append({
+                'num': step_num,
+                'message': message,
+                'mood': mood,
+                'answers': step_answers
+            })
+
+        if not steps:
+            errors.append('Нет валидных шагов')
+            return jsonify({'success': False, 'errors': errors})
+
+        # Сортируем шаги по номеру
+        steps.sort(key=lambda x: x['num'])
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'title': title,
+                'description': description,
+                'level': level,
+                'tags': tags,
+                'timer': timer,
+                'client_name': client_name,
+                'client_balance': client_balance,
+                'steps': steps
+            }
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Ошибка чтения файла: {str(e)}'})
+
+
+@app.route('/admin/trainer/import/confirm', methods=['POST'])
+@AdminAuth.login_required
+def admin_trainer_import_confirm():
+    """Подтвердить и выполнить импорт"""
+    try:
+        data = request.get_json()
+
+        # Получаем level_id по коду
+        level = trainer_mgr.get_level_by_code(data.get('level', 'basic'))
+        if not level:
+            return jsonify({'success': False, 'error': 'Неверный уровень'})
+
+        # Подготавливаем карточку клиента
+        client_info = {}
+        if data.get('client_name'):
+            client_info['name'] = data['client_name']
+        if data.get('client_balance'):
+            client_info['balance'] = data['client_balance']
+
+        # Создаём сценарий
+        scenario_data = {
+            'level_id': level['id'],
+            'title': data.get('title', 'Импортированный сценарий'),
+            'description': data.get('description', ''),
+            'timer_seconds': data.get('timer', 15),
+            'is_active': 0,  # Неактивен по умолчанию
+            'client_info_json': json.dumps(client_info, ensure_ascii=False) if client_info else None
+        }
+
+        result = trainer_mgr.create_scenario(scenario_data)
+
+        if not result['success']:
+            return jsonify({'success': False, 'error': result.get('error', 'Ошибка создания сценария')})
+
+        scenario_id = result['id']
+
+        # Обрабатываем теги
+        if data.get('tags'):
+            tag_names = [t.strip() for t in data['tags'].split(',') if t.strip()]
+            all_tags = trainer_mgr.get_all_tags()
+            tag_ids = []
+
+            for tag_name in tag_names:
+                # Ищем существующий тег
+                existing = next((t for t in all_tags if t['name'].lower() == tag_name.lower()), None)
+                if existing:
+                    tag_ids.append(existing['id'])
+                else:
+                    # Создаём новый тег
+                    import random
+                    colors = ['#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#00BCD4', '#795548']
+                    tag_result = trainer_mgr.create_tag(tag_name, random.choice(colors), '🏷️')
+                    if tag_result['success']:
+                        tag_ids.append(tag_result['id'])
+
+            if tag_ids:
+                trainer_mgr.set_scenario_tags(scenario_id, tag_ids)
+
+        # Создаём шаги и ответы
+        for step_data in data.get('steps', []):
+            step_result = trainer_mgr.create_step(scenario_id, {
+                'client_message': step_data['message'],
+                'client_name': data.get('client_name', 'Клиент'),
+                'initial_mood': step_data.get('mood', 'neutral')
+            })
+
+            if step_result['success']:
+                step_id = step_result['id']
+
+                for answer in step_data.get('answers', []):
+                    trainer_mgr.create_answer(step_id, {
+                        'answer_text': answer['text'],
+                        'is_correct': 1 if answer['type'] == 'correct' else 0,
+                        'is_partial': 1 if answer['type'] == 'partial' else 0,
+                        'points': answer.get('points', 0),
+                        'mood_impact': answer.get('impact', 0),
+                        'feedback': answer.get('feedback', '')
+                    })
+
+        # Пересчитываем total_points
+        steps = trainer_mgr.get_scenario_steps(scenario_id)
+        total_points = 0
+        for step in steps:
+            answers = trainer_mgr.get_step_answers(step['id'])
+            max_step_points = max([a['points'] for a in answers], default=0)
+            total_points += max_step_points
+
+        trainer_mgr.update_scenario(scenario_id, {'total_points': total_points})
+
+        # Логируем
+        user_info = session.get('user_info', {})
+        trainer_mgr.log_action(
+            user_id=user_info.get('username') or user_info.get('name', 'admin'),
+            action='import',
+            entity_type='scenario',
+            entity_id=scenario_id,
+            entity_name=data.get('title'),
+            ip_address=request.remote_addr
+        )
+
+        flash(f'Сценарий "{data.get("title")}" успешно импортирован!')
+        return jsonify({
+            'success': True,
+            'scenario_id': scenario_id,
+            'redirect_url': url_for('admin_trainer_edit', scenario_id=scenario_id)
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)})
 
 
 # ============================================

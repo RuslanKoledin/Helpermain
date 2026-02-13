@@ -473,6 +473,83 @@
             box-shadow: 0 4px 15px rgba(156, 39, 176, 0.4);
         }
 
+        /* Tags Section */
+        .tags-section {
+            background: linear-gradient(135deg, #fce4ec, #f8bbd9);
+            border: 2px solid #e91e63;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .tags-section h2 {
+            color: #c2185b;
+            border-bottom-color: rgba(194, 24, 91, 0.3);
+        }
+
+        .tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .tag-checkbox {
+            display: none;
+        }
+
+        .tag-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .tag-checkbox:checked + .tag-label {
+            border-color: currentColor;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            transform: scale(1.05);
+        }
+
+        .tag-icon {
+            font-size: 14px;
+        }
+
+        .add-tag-inline {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .add-tag-inline input {
+            flex: 1;
+            max-width: 200px;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .add-tag-inline button {
+            padding: 8px 16px;
+            background: #e91e63;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .add-tag-inline button:hover {
+            background: #c2185b;
+        }
+
         @media (max-width: 768px) {
             .form-row {
                 flex-direction: column;
@@ -588,6 +665,32 @@
                                {% if not scenario or scenario.is_active %}checked{% endif %}>
                         <label for="is_active">Сценарий активен (виден пользователям)</label>
                     </div>
+                </div>
+            </div>
+
+            <!-- Tags Section -->
+            <div class="tags-section">
+                <h2>🏷️ Теги</h2>
+                <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                    Выберите теги для фильтрации и категоризации сценария.
+                </p>
+
+                <div class="tags-container" id="tagsContainer">
+                    {% for tag in tags %}
+                    <div>
+                        <input type="checkbox" class="tag-checkbox" id="tag_{{ tag.id }}" name="tags" value="{{ tag.id }}"
+                               {% if tag.id in scenario_tag_ids %}checked{% endif %}>
+                        <label class="tag-label" for="tag_{{ tag.id }}" style="background-color: {{ tag.color }}20; color: {{ tag.color }};">
+                            <span class="tag-icon">{{ tag.icon }}</span>
+                            {{ tag.name }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="add-tag-inline">
+                    <input type="text" id="newTagName" placeholder="Новый тег...">
+                    <button type="button" onclick="addNewTag()">+ Добавить тег</button>
                 </div>
             </div>
 
@@ -756,6 +859,9 @@
                     {% if scenario %}Сохранить изменения{% else %}Создать сценарий{% endif %}
                 </button>
                 {% if scenario %}
+                <a href="{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1" class="btn btn-primary" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);">
+                    👁️ Предпросмотр
+                </a>
                 <a href="{{ url_for('admin_trainer_visual', scenario_id=scenario.id) }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">
                     🎨 Визуальный редактор
                 </a>
@@ -859,6 +965,50 @@
                     location.reload();
                 } else {
                     alert('Ошибка при удалении ответа');
+                }
+            } catch (error) {
+                alert('Ошибка соединения');
+            }
+        }
+
+        // Tags functions
+        async function addNewTag() {
+            const nameInput = document.getElementById('newTagName');
+            const name = nameInput.value.trim();
+
+            if (!name) {
+                alert('Введите название тега');
+                return;
+            }
+
+            try {
+                const response = await fetch('/admin/trainer/tags', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ name: name })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Add tag to UI
+                    const tag = result.tag;
+                    const container = document.getElementById('tagsContainer');
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <input type="checkbox" class="tag-checkbox" id="tag_${tag.id}" name="tags" value="${tag.id}" checked>
+                        <label class="tag-label" for="tag_${tag.id}" style="background-color: ${tag.color}20; color: ${tag.color};">
+                            <span class="tag-icon">${tag.icon}</span>
+                            ${tag.name}
+                        </label>
+                    `;
+                    container.appendChild(div);
+                    nameInput.value = '';
+                } else {
+                    alert('Ошибка: ' + result.error);
                 }
             } catch (error) {
                 alert('Ошибка соединения');

@@ -369,6 +369,26 @@
             opacity: 0.7;
         }
 
+        .toolbar-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .toolbar-divider {
+            width: 1px;
+            height: 40px;
+            background: rgba(255,255,255,0.2);
+            margin: 0 5px;
+        }
+
+        .history-info {
+            font-size: 12px;
+            color: rgba(255,255,255,0.5);
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+        }
+
         /* Zoom controls */
         .zoom-controls {
             position: fixed;
@@ -649,6 +669,7 @@
         </div>
         <div class="header-actions">
             <button class="btn btn-add" onclick="showHelp()">?</button>
+            <a href="{{ url_for('trainer_play', scenario_id=scenario.id) }}?preview=1" class="btn" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: white;">👁️ Предпросмотр</a>
             <button class="btn btn-save" onclick="saveScenario()">Сохранить</button>
         </div>
     </div>
@@ -680,22 +701,46 @@
 
     <!-- Toolbar -->
     <div class="toolbar">
+        <button class="toolbar-btn" id="undoBtn" onclick="undo()" title="Отменить (Ctrl+Z)">
+            <span class="icon">↩️</span>
+            <span class="label">Отменить</span>
+        </button>
+        <button class="toolbar-btn" id="redoBtn" onclick="redo()" title="Повторить (Ctrl+Y)">
+            <span class="icon">↪️</span>
+            <span class="label">Повторить</span>
+        </button>
+        <span class="toolbar-divider"></span>
         <button class="toolbar-btn" onclick="addNode('client')">
-            <span class="icon">&#128172;</span>
+            <span class="icon">💬</span>
             <span class="label">Реплика</span>
         </button>
         <button class="toolbar-btn" onclick="addNode('answer')">
-            <span class="icon">&#9989;</span>
+            <span class="icon">✅</span>
             <span class="label">Ответ</span>
         </button>
         <button class="toolbar-btn" onclick="addNode('condition')">
-            <span class="icon">&#10067;</span>
+            <span class="icon">❓</span>
             <span class="label">Условие</span>
         </button>
         <button class="toolbar-btn" onclick="addNode('end')">
-            <span class="icon">&#127937;</span>
+            <span class="icon">🏁</span>
             <span class="label">Конец</span>
         </button>
+        <span class="toolbar-divider"></span>
+        <button class="toolbar-btn" onclick="copyNode()" title="Копировать (Ctrl+C)">
+            <span class="icon">📋</span>
+            <span class="label">Копировать</span>
+        </button>
+        <button class="toolbar-btn" onclick="pasteNode()" title="Вставить (Ctrl+V)">
+            <span class="icon">📄</span>
+            <span class="label">Вставить</span>
+        </button>
+        <button class="toolbar-btn" onclick="autoLayout()" title="Авто-расположение">
+            <span class="icon">🔀</span>
+            <span class="label">Авто</span>
+        </button>
+        <span class="toolbar-divider"></span>
+        <span class="history-info" id="historyInfo">1/1</span>
     </div>
 
     <!-- Zoom Controls -->
@@ -716,14 +761,20 @@
                 <li><strong>Перетаскивание:</strong> Зажмите и тяните узлы</li>
                 <li><strong>Соединение:</strong> Нажмите на точку выхода и тяните к точке входа</li>
                 <li><strong>Выбор:</strong> Клик по узлу открывает панель свойств</li>
-                <li><strong>Удаление:</strong> Кнопка удаления появляется при наведении</li>
-                <li><strong>Масштаб:</strong> Колесо мыши или кнопки +/-</li>
+                <li><strong>Удаление:</strong> Кнопка удаления или клавиша Delete</li>
+                <li><strong>Масштаб:</strong> Колесо мыши + Ctrl или кнопки +/-</li>
             </ul>
+            <p style="margin-top: 15px; color: #666;">
+                <strong>Горячие клавиши:</strong><br>
+                Ctrl+Z — Отменить | Ctrl+Y — Повторить<br>
+                Ctrl+C — Копировать | Ctrl+V — Вставить<br>
+                Ctrl+D — Дублировать | Ctrl+S — Сохранить
+            </p>
             <p style="margin-top: 15px; color: #666;">
                 <strong>Типы узлов:</strong><br>
                 Реплика (синий) - сообщение клиента<br>
                 Ответ (зеленый) - варианты ответа оператора<br>
-                Условие (оранжевый) - проверка условий (if loyalty &lt; 50%)<br>
+                Условие (оранжевый) - проверка условий<br>
                 Конец (красный) - завершение сценария
             </p>
             <button class="help-close" onclick="hideHelp()">Закрыть</button>
@@ -744,6 +795,14 @@
         let zoom = 1;
         let pan = { x: 0, y: 0 };
         let nodeIdCounter = 1;
+
+        // === UNDO/REDO SYSTEM ===
+        let history = [];           // Array of states
+        let historyIndex = -1;      // Current position
+        const MAX_HISTORY = 50;     // Maximum steps
+
+        // === CLIPBOARD ===
+        let clipboard = null;       // { node: {...}, type: 'single' }
 
         // Elements
         const canvas = document.getElementById('canvas');
@@ -833,7 +892,204 @@
         }
 
         // Load data
-        loadVisualData();
+        loadVisualData().then(() => {
+            // Save initial state for undo
+            saveState();
+        });
+
+        // === UNDO/REDO FUNCTIONS ===
+        function saveState() {
+            // Copy current state
+            const state = JSON.parse(JSON.stringify({ nodes, connections }));
+
+            // Trim "future" if we did undo then made changes
+            history = history.slice(0, historyIndex + 1);
+            history.push(state);
+
+            if (history.length > MAX_HISTORY) history.shift();
+            historyIndex = history.length - 1;
+
+            updateHistoryUI();
+        }
+
+        function undo() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                restoreState(history[historyIndex]);
+                showToast('Отменено');
+            }
+        }
+
+        function redo() {
+            if (historyIndex < history.length - 1) {
+                historyIndex++;
+                restoreState(history[historyIndex]);
+                showToast('Повторено');
+            }
+        }
+
+        function restoreState(state) {
+            nodes = JSON.parse(JSON.stringify(state.nodes));
+            connections = JSON.parse(JSON.stringify(state.connections));
+
+            // Update nodeIdCounter
+            nodes.forEach(n => {
+                const idNum = parseInt(n.id.replace(/\D/g, '')) || 0;
+                nodeIdCounter = Math.max(nodeIdCounter, idNum + 1);
+            });
+
+            renderNodes();
+            updateConnections();
+            updateHistoryUI();
+
+            // Deselect
+            selectedNode = null;
+            panelEmpty.style.display = 'block';
+            panelContent.style.display = 'none';
+        }
+
+        function updateHistoryUI() {
+            const historyInfo = document.getElementById('historyInfo');
+            if (historyInfo) {
+                historyInfo.textContent = `${historyIndex + 1}/${history.length}`;
+            }
+            const undoBtn = document.getElementById('undoBtn');
+            const redoBtn = document.getElementById('redoBtn');
+            if (undoBtn) undoBtn.disabled = historyIndex <= 0;
+            if (redoBtn) redoBtn.disabled = historyIndex >= history.length - 1;
+        }
+
+        // === COPY/PASTE FUNCTIONS ===
+        function copyNode() {
+            if (!selectedNode) {
+                showToast('Выберите узел для копирования', true);
+                return;
+            }
+            clipboard = {
+                type: 'single',
+                node: JSON.parse(JSON.stringify(selectedNode))
+            };
+            showToast('Узел скопирован');
+        }
+
+        function pasteNode() {
+            if (!clipboard) {
+                showToast('Буфер обмена пуст', true);
+                return;
+            }
+
+            const newNode = JSON.parse(JSON.stringify(clipboard.node));
+            newNode.id = `node_${nodeIdCounter++}`;
+            newNode.x += 50;  // Offset
+            newNode.y += 50;
+
+            // Clear IDs from answers if copying client node
+            if (newNode.data && newNode.data.answers) {
+                newNode.data.answers = newNode.data.answers.map(a => ({
+                    ...a,
+                    id: null
+                }));
+            }
+            if (newNode.data) {
+                newNode.data.stepId = null;
+            }
+
+            nodes.push(newNode);
+            saveState();
+            renderNodes();
+            updateConnections();
+            selectNode(newNode);
+            showToast('Узел вставлен');
+        }
+
+        function duplicateNode() {
+            if (!selectedNode) {
+                showToast('Выберите узел для дублирования', true);
+                return;
+            }
+            copyNode();
+            pasteNode();
+        }
+
+        // === AUTO-LAYOUT FUNCTION ===
+        function autoLayout() {
+            if (!confirm('Автоматически расположить узлы? Текущие позиции будут изменены.')) return;
+
+            saveState();
+
+            // Find root nodes (no incoming connections)
+            const roots = nodes.filter(n =>
+                !connections.some(c => c.to === n.id)
+            );
+
+            const LEVEL_HEIGHT = 200;
+            const NODE_WIDTH = 280;
+            const MARGIN = 50;
+            const canvasWidth = 3000;
+
+            let visited = new Set();
+            let levels = {};  // { nodeId: level }
+
+            // BFS for level assignment
+            function assignLevels(startNodes) {
+                let queue = startNodes.map(n => ({ node: n, level: 0 }));
+
+                while (queue.length > 0) {
+                    const { node, level } = queue.shift();
+                    if (visited.has(node.id)) continue;
+
+                    visited.add(node.id);
+                    levels[node.id] = level;
+
+                    // Find children
+                    const children = connections
+                        .filter(c => c.from === node.id)
+                        .map(c => nodes.find(n => n.id === c.to))
+                        .filter(Boolean);
+
+                    children.forEach(child => {
+                        if (!visited.has(child.id)) {
+                            queue.push({ node: child, level: level + 1 });
+                        }
+                    });
+                }
+            }
+
+            assignLevels(roots.length > 0 ? roots : (nodes.length > 0 ? [nodes[0]] : []));
+
+            // Group by levels
+            const levelGroups = {};
+            Object.entries(levels).forEach(([nodeId, level]) => {
+                if (!levelGroups[level]) levelGroups[level] = [];
+                levelGroups[level].push(nodeId);
+            });
+
+            // Position nodes
+            Object.entries(levelGroups).forEach(([level, nodeIds]) => {
+                const y = parseInt(level) * LEVEL_HEIGHT + MARGIN;
+                const totalWidth = nodeIds.length * NODE_WIDTH;
+                const startX = Math.max(MARGIN, (canvasWidth - totalWidth) / 2);
+
+                nodeIds.forEach((nodeId, idx) => {
+                    const node = nodes.find(n => n.id === nodeId);
+                    if (node) {
+                        node.x = startX + idx * NODE_WIDTH;
+                        node.y = y;
+                    }
+                });
+            });
+
+            // Handle disconnected nodes
+            let offsetY = (Object.keys(levelGroups).length) * LEVEL_HEIGHT + MARGIN;
+            nodes.filter(n => !levels[n.id]).forEach((node, idx) => {
+                node.x = MARGIN + (idx % 4) * NODE_WIDTH;
+                node.y = offsetY + Math.floor(idx / 4) * LEVEL_HEIGHT;
+            });
+
+            renderNodes();
+            updateConnections();
+            showToast('Узлы расположены автоматически');
+        }
 
         // Node rendering
         function renderNodes() {
@@ -864,8 +1120,16 @@
                     footerText = `Шаг ${node.data.stepNum || '?'}`;
                     break;
                 case 'answer':
-                    headerText = 'Варианты ответа';
-                    bodyText = node.data.answers ? node.data.answers.map(a => a.text).join('\n') : '';
+                    headerText = 'Ответ оператора';
+                    bodyText = node.data.text || 'Ответ оператора...';
+                    // Показываем тип ответа
+                    if (node.data.isCorrect) {
+                        footerText = '✓ Верный';
+                    } else if (node.data.isPartial) {
+                        footerText = '◐ Частично';
+                    } else {
+                        footerText = '✗ Неверный';
+                    }
                     break;
                 case 'condition':
                     headerText = 'Условие';
@@ -1014,6 +1278,7 @@
                         from: creatingConnection.fromNode.id,
                         to: toNode.id
                     });
+                    saveState();
                     updateConnections();
                 }
             }
@@ -1141,6 +1406,54 @@
                         </div>
                     `;
                     break;
+                case 'answer':
+                    html = `
+                        <div class="prop-group">
+                            <label class="prop-label">Текст ответа</label>
+                            <textarea class="prop-textarea" onchange="updateNodeData('text', this.value)">${escapeHtml(node.data.text || '')}</textarea>
+                        </div>
+                        <div class="prop-group">
+                            <label class="prop-label">Тип ответа</label>
+                            <div class="answer-options" style="flex-direction: column; gap: 8px;">
+                                <label class="answer-option">
+                                    <input type="radio" name="answer_type_single" value="correct" ${node.data.isCorrect ? 'checked' : ''} onchange="updateNodeData('isCorrect', true); updateNodeData('isPartial', false);">
+                                    <span class="option-correct">Верный (+10 баллов)</span>
+                                </label>
+                                <label class="answer-option">
+                                    <input type="radio" name="answer_type_single" value="partial" ${node.data.isPartial ? 'checked' : ''} onchange="updateNodeData('isCorrect', false); updateNodeData('isPartial', true);">
+                                    <span class="option-partial">Частично верный (+5 баллов)</span>
+                                </label>
+                                <label class="answer-option">
+                                    <input type="radio" name="answer_type_single" value="wrong" ${!node.data.isCorrect && !node.data.isPartial ? 'checked' : ''} onchange="updateNodeData('isCorrect', false); updateNodeData('isPartial', false);">
+                                    <span class="option-wrong">Неверный (0 баллов)</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="prop-group">
+                            <label class="prop-label">Баллы</label>
+                            <input type="number" class="prop-input" value="${node.data.points || 0}" onchange="updateNodeData('points', parseInt(this.value))">
+                        </div>
+                        <div class="prop-group">
+                            <label class="prop-label">Влияние на лояльность</label>
+                            <select class="prop-select" onchange="updateNodeData('moodImpact', parseInt(this.value))">
+                                <option value="10" ${node.data.moodImpact === 10 ? 'selected' : ''}>+10 (Отлично)</option>
+                                <option value="5" ${node.data.moodImpact === 5 ? 'selected' : ''}>+5 (Хорошо)</option>
+                                <option value="0" ${node.data.moodImpact === 0 || !node.data.moodImpact ? 'selected' : ''}>0 (Нейтрально)</option>
+                                <option value="-10" ${node.data.moodImpact === -10 ? 'selected' : ''}>-10 (Плохо)</option>
+                                <option value="-20" ${node.data.moodImpact === -20 ? 'selected' : ''}>-20 (Очень плохо)</option>
+                                <option value="-100" ${node.data.moodImpact === -100 ? 'selected' : ''}>-100 (Game Over)</option>
+                            </select>
+                        </div>
+                        <div class="prop-group">
+                            <label class="prop-label">Обратная связь (feedback)</label>
+                            <textarea class="prop-textarea" placeholder="Почему этот ответ верный/неверный" onchange="updateNodeData('feedback', this.value)">${escapeHtml(node.data.feedback || '')}</textarea>
+                        </div>
+                        <div class="prop-group">
+                            <label class="prop-label">Ссылка на Базу Знаний</label>
+                            <input class="prop-input" placeholder="https://..." value="${escapeHtml(node.data.knowledgeLink || '')}" onchange="updateNodeData('knowledgeLink', this.value)">
+                        </div>
+                    `;
+                    break;
                 case 'end':
                     html = `
                         <div class="prop-group">
@@ -1160,6 +1473,7 @@
         function updateNodeData(key, value) {
             if (!selectedNode) return;
             selectedNode.data[key] = value;
+            saveState();
             renderNodes();
             selectNode(selectedNode);
         }
@@ -1178,6 +1492,7 @@
                 moodImpact: 0
             });
 
+            saveState();
             renderNodes();
             showProperties(selectedNode);
         }
@@ -1187,6 +1502,7 @@
             if (!confirm('Удалить этот ответ?')) return;
 
             selectedNode.data.answers.splice(idx, 1);
+            saveState();
             renderNodes();
             showProperties(selectedNode);
         }
@@ -1194,6 +1510,7 @@
         function updateAnswer(idx, key, value) {
             if (!selectedNode || !selectedNode.data.answers || !selectedNode.data.answers[idx]) return;
             selectedNode.data.answers[idx][key] = value;
+            saveState();
             renderNodes();
         }
 
@@ -1216,6 +1533,7 @@
                 answer.moodImpact = -10;
             }
 
+            saveState();
             renderNodes();
             showProperties(selectedNode);
         }
@@ -1225,20 +1543,50 @@
             const scrollX = canvasContainer.scrollLeft;
             const scrollY = canvasContainer.scrollTop;
 
+            // Инициализация данных в зависимости от типа узла
+            let nodeData = {};
+            switch(type) {
+                case 'client':
+                    nodeData = {
+                        message: 'Новое сообщение клиента',
+                        clientName: 'Клиент',
+                        mood: 'neutral',
+                        answers: []
+                    };
+                    break;
+                case 'answer':
+                    nodeData = {
+                        text: 'Ответ оператора',
+                        isCorrect: false,
+                        isPartial: false,
+                        points: 0,
+                        moodImpact: 0,
+                        feedback: '',
+                        knowledgeLink: ''
+                    };
+                    break;
+                case 'condition':
+                    nodeData = {
+                        condition: 'if loyalty < 50%'
+                    };
+                    break;
+                case 'end':
+                    nodeData = {
+                        endType: 'success'
+                    };
+                    break;
+            }
+
             const newNode = {
                 id: `node_${nodeIdCounter++}`,
                 type: type,
                 x: scrollX + 400,
                 y: scrollY + 200,
-                data: {
-                    message: type === 'client' ? 'Новое сообщение клиента' : '',
-                    condition: type === 'condition' ? 'if loyalty < 50%' : '',
-                    endType: 'success',
-                    answers: []
-                }
+                data: nodeData
             };
 
             nodes.push(newNode);
+            saveState();
             renderNodes();
             updateConnections();
             selectNode(newNode);
@@ -1257,6 +1605,7 @@
                 panelContent.style.display = 'none';
             }
 
+            saveState();
             renderNodes();
             updateConnections();
         }
@@ -1370,12 +1719,44 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
+            // Ignore if typing in input/textarea
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
             if (e.key === 'Delete' && selectedNode) {
                 deleteNode(selectedNode.id);
             }
+            // Ctrl+S - Save
             if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
                 saveScenario();
+            }
+            // Ctrl+Z - Undo
+            if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                e.preventDefault();
+                undo();
+            }
+            // Ctrl+Y or Ctrl+Shift+Z - Redo
+            if ((e.key === 'y' && (e.ctrlKey || e.metaKey)) ||
+                (e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
+                e.preventDefault();
+                redo();
+            }
+            // Ctrl+C - Copy
+            if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                copyNode();
+            }
+            // Ctrl+V - Paste
+            if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                pasteNode();
+            }
+            // Ctrl+D - Duplicate
+            if (e.key === 'd' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                duplicateNode();
             }
             if (e.key === 'Escape') {
                 hideHelp();

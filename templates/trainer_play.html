@@ -113,6 +113,71 @@
             margin-top: 10px;
         }
 
+        /* Карточка клиента */
+        .client-card {
+            width: 100%;
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .client-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+
+        .client-card-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #a8a8a8;
+        }
+
+        .client-card-toggle {
+            font-size: 12px;
+            color: #e94560;
+            transition: transform 0.3s;
+        }
+
+        .client-card-toggle.collapsed {
+            transform: rotate(180deg);
+        }
+
+        .client-card-body {
+            display: block;
+        }
+
+        .client-card-body.collapsed {
+            display: none;
+        }
+
+        .client-field {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            font-size: 12px;
+        }
+
+        .client-field:last-child {
+            border-bottom: none;
+        }
+
+        .client-field-label {
+            color: #a8a8a8;
+        }
+
+        .client-field-value {
+            color: #fff;
+            font-weight: 500;
+            text-align: right;
+            max-width: 60%;
+            word-break: break-word;
+        }
+
         /* Центральная панель */
         .center-panel {
             flex: 1;
@@ -419,13 +484,154 @@
         .modal-content.fail { border-color: #f44336; }
         .modal-content.fail .modal-btn { background: #f44336; }
 
+        /* Рекомендации */
+        .recommendations {
+            text-align: left;
+            margin: 20px 0;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .recommendations::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .recommendations::-webkit-scrollbar-thumb {
+            background: rgba(233,69,96,0.5);
+            border-radius: 3px;
+        }
+
+        .rec-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .rec-item {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid #e94560;
+        }
+
+        .rec-item.partial {
+            border-left-color: #FF9800;
+        }
+
+        .rec-step {
+            font-size: 11px;
+            color: #a8a8a8;
+            margin-bottom: 5px;
+        }
+
+        .rec-feedback {
+            font-size: 13px;
+            color: #e8e8e8;
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+
+        .rec-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: #4FC3F7;
+            text-decoration: none;
+            padding: 5px 10px;
+            background: rgba(79,195,247,0.15);
+            border-radius: 15px;
+            transition: all 0.2s;
+        }
+
+        .rec-link:hover {
+            background: rgba(79,195,247,0.3);
+        }
+
+        .rec-tips {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(76,175,80,0.15);
+            border-radius: 10px;
+            border-left: 3px solid #4CAF50;
+        }
+
+        .rec-tips-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #4CAF50;
+            margin-bottom: 8px;
+        }
+
+        .rec-tips-list {
+            font-size: 12px;
+            color: #a8a8a8;
+            line-height: 1.6;
+        }
+
+        .rec-tips-list li {
+            margin-bottom: 4px;
+        }
+
+        /* Preview Mode Banner */
+        .preview-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #FF9800, #F57C00);
+            color: white;
+            padding: 8px 20px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .preview-banner .close-preview {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .preview-banner .close-preview:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        body.preview-mode .game-container {
+            margin-top: 40px;
+        }
+
+        body.preview-mode .top-bar {
+            margin-top: 0;
+        }
+
         /* Адаптивность */
         @media (max-width: 900px) {
             .left-panel, .right-panel { display: none; }
         }
     </style>
 </head>
-<body>
+<body class="{% if preview_mode %}preview-mode{% endif %}">
+    {% if preview_mode %}
+    <div class="preview-banner">
+        <span>👁️ Режим предпросмотра — результаты не сохраняются</span>
+        <a href="{{ url_for('admin_trainer_edit', scenario_id=scenario.id) }}" class="close-preview">← Вернуться к редактированию</a>
+    </div>
+    {% endif %}
+
     <div class="game-container">
         <!-- Левая панель - Клиент -->
         <div class="left-panel">
@@ -442,6 +648,17 @@
                     <div class="emotion-bar" id="emotionBar"></div>
                 </div>
                 <div class="emotion-face" id="emotionFace">😊</div>
+            </div>
+
+            <!-- Карточка клиента -->
+            <div class="client-card" id="clientCard" style="display: none;">
+                <div class="client-card-header" onclick="toggleClientCard()">
+                    <span class="client-card-title">📋 Карточка клиента</span>
+                    <span class="client-card-toggle" id="cardToggle">▼</span>
+                </div>
+                <div class="client-card-body" id="clientCardBody">
+                    <!-- Поля добавляются динамически -->
+                </div>
             </div>
         </div>
 
@@ -509,10 +726,21 @@
 
     <!-- Результат -->
     <div class="modal-overlay" id="resultModal">
-        <div class="modal-content" id="resultModalContent">
+        <div class="modal-content" id="resultModalContent" style="max-width: 550px;">
             <div class="modal-icon" id="resultIcon">🎉</div>
             <div class="modal-title" id="resultTitle">Отлично!</div>
             <div class="modal-text" id="resultText">Диалог завершён!</div>
+
+            <!-- Рекомендации -->
+            <div class="recommendations" id="recommendations" style="display: none;">
+                <div class="rec-title">📝 Разбор ответов</div>
+                <div id="recItems"></div>
+                <div class="rec-tips" id="recTips" style="display: none;">
+                    <div class="rec-tips-title">💡 Рекомендации</div>
+                    <ul class="rec-tips-list" id="recTipsList"></ul>
+                </div>
+            </div>
+
             <a href="{{ url_for('trainer_level', level_code=scenario.level_code) }}" class="modal-btn">Продолжить</a>
         </div>
     </div>
@@ -523,6 +751,7 @@
         const timerSeconds = {{ scenario.timer_seconds or 15 }};
         const totalPoints = {{ scenario.total_points }};
         const csrfToken = '{{ csrf_token() }}';
+        const isPreviewMode = {{ 'true' if preview_mode else 'false' }};
 
         let currentStepNum = 0;
         let score = 0;
@@ -543,6 +772,24 @@
         const currentStepEl = document.getElementById('currentStep');
         const pointsInfo = document.getElementById('pointsInfo');
         const clientImg = document.getElementById('clientImg');
+        const clientCard = document.getElementById('clientCard');
+        const clientCardBody = document.getElementById('clientCardBody');
+
+        // Названия полей для карточки клиента
+        const fieldLabels = {
+            'name': 'ФИО',
+            'fio': 'ФИО',
+            'tariff': 'Тариф',
+            'balance': 'Баланс',
+            'card': 'Карта',
+            'card_number': 'Номер карты',
+            'code_word': 'Кодовое слово',
+            'phone': 'Телефон',
+            'iin': 'ИИН',
+            'account': 'Счёт',
+            'status': 'Статус',
+            'product': 'Продукт'
+        };
 
         // Загрузка первого шага
         loadStep(1);
@@ -567,6 +814,11 @@
 
                 // Показываем ответы
                 showAnswers(data.step.answers);
+
+                // Показываем карточку клиента (только на первом шаге)
+                if (stepNum === 1 && data.client_info) {
+                    showClientCard(data.client_info);
+                }
 
                 // Таймеры
                 startTimer();
@@ -642,8 +894,12 @@
                     answersHistory.push({
                         step: currentStepNum,
                         answer_id: answer.id,
+                        answer_text: answer.answer_text,
                         is_correct: result.is_correct,
-                        points: result.points_earned
+                        is_partial: result.is_partial,
+                        points: result.points_earned,
+                        feedback: result.feedback,
+                        knowledge_link: result.knowledge_link
                     });
 
                     if (emotion >= 100 || result.is_game_over) {
@@ -752,36 +1008,111 @@
             const text = document.getElementById('resultText');
 
             if (percent >= 80) {
-                // Отлично
                 icon.textContent = '🎉';
                 title.textContent = 'Отлично!';
                 text.textContent = `Вы набрали ${score} из ${totalPoints} баллов (${percent}%). Превосходный результат!`;
                 content.className = 'modal-content success';
             } else if (percent >= 60) {
-                // Хорошо
                 icon.textContent = '👍';
                 title.textContent = 'Хорошо!';
                 text.textContent = `Вы набрали ${score} из ${totalPoints} баллов (${percent}%). Неплохой результат, но есть над чем поработать.`;
                 content.className = 'modal-content success';
             } else if (percent >= 40) {
-                // Удовлетворительно
                 icon.textContent = '😐';
                 title.textContent = 'Удовлетворительно';
                 text.textContent = `Вы набрали ${score} из ${totalPoints} баллов (${percent}%). Рекомендуем повторить материал.`;
                 content.className = 'modal-content warning';
             } else {
-                // Плохо
                 icon.textContent = '😔';
                 title.textContent = 'К сожалению...';
                 text.textContent = `Вы набрали ${score} из ${totalPoints} баллов (${percent}%). Результат ниже ожидаемого. Попробуйте ещё раз!`;
                 content.className = 'modal-content fail';
             }
 
+            // Показываем рекомендации
+            showRecommendations();
+
             modal.classList.add('show');
             saveResult(false);
         }
 
+        function showRecommendations() {
+            const wrongAnswers = answersHistory.filter(a => !a.is_correct);
+            const partialAnswers = answersHistory.filter(a => a.is_partial);
+            const recSection = document.getElementById('recommendations');
+            const recItems = document.getElementById('recItems');
+            const recTips = document.getElementById('recTips');
+            const recTipsList = document.getElementById('recTipsList');
+
+            // Если все ответы правильные - не показываем раздел
+            if (wrongAnswers.length === 0 && partialAnswers.length === 0) {
+                recSection.style.display = 'none';
+                return;
+            }
+
+            recSection.style.display = 'block';
+            recItems.innerHTML = '';
+
+            // Показываем неправильные и частично правильные ответы
+            const allIssues = [...wrongAnswers, ...partialAnswers.filter(p => !wrongAnswers.find(w => w.step === p.step))];
+
+            allIssues.forEach(answer => {
+                const item = document.createElement('div');
+                item.className = 'rec-item' + (answer.is_partial ? ' partial' : '');
+
+                let html = `<div class="rec-step">Шаг ${answer.step}</div>`;
+
+                if (answer.feedback) {
+                    html += `<div class="rec-feedback">${answer.feedback}</div>`;
+                } else {
+                    html += `<div class="rec-feedback">Ваш ответ: "${answer.answer_text}"</div>`;
+                }
+
+                if (answer.knowledge_link) {
+                    html += `<a href="${answer.knowledge_link}" target="_blank" class="rec-link">📚 Изучить в Базе Знаний</a>`;
+                }
+
+                item.innerHTML = html;
+                recItems.appendChild(item);
+            });
+
+            // Генерируем советы
+            const tips = [];
+            const hasTimeout = answersHistory.some(a => a.answer_text === '...');
+            const hasWrong = wrongAnswers.length > 0;
+            const hasPartial = partialAnswers.length > 0;
+
+            if (hasTimeout) {
+                tips.push('Старайтесь отвечать быстрее — клиенты не любят ждать');
+            }
+            if (hasWrong && wrongAnswers.length >= 2) {
+                tips.push('Повторите материал по работе с возражениями');
+            }
+            if (hasPartial) {
+                tips.push('Обратите внимание на точность формулировок');
+            }
+            if (emotion >= 50) {
+                tips.push('Поработайте над эмпатией и управлением эмоциями клиента');
+            }
+            if (wrongAnswers.some(a => a.knowledge_link)) {
+                tips.push('Изучите ссылки на Базу Знаний для закрепления материала');
+            }
+
+            if (tips.length > 0) {
+                recTips.style.display = 'block';
+                recTipsList.innerHTML = tips.map(t => `<li>${t}</li>`).join('');
+            } else {
+                recTips.style.display = 'none';
+            }
+        }
+
         async function saveResult(isGameOver) {
+            // Don't save results in preview mode
+            if (isPreviewMode) {
+                console.log('[Preview Mode] Results not saved');
+                return;
+            }
+
             try {
                 await fetch('/api/trainer/complete', {
                     method: 'POST',
@@ -795,6 +1126,37 @@
                     })
                 });
             } catch (e) { console.error(e); }
+        }
+
+        function showClientCard(info) {
+            if (!info || Object.keys(info).length === 0) {
+                clientCard.style.display = 'none';
+                return;
+            }
+
+            clientCard.style.display = 'block';
+            clientCardBody.innerHTML = '';
+
+            for (const [key, value] of Object.entries(info)) {
+                if (value) {
+                    const field = document.createElement('div');
+                    field.className = 'client-field';
+
+                    const label = fieldLabels[key] || key;
+                    field.innerHTML = `
+                        <span class="client-field-label">${label}</span>
+                        <span class="client-field-value">${value}</span>
+                    `;
+                    clientCardBody.appendChild(field);
+                }
+            }
+        }
+
+        function toggleClientCard() {
+            const body = document.getElementById('clientCardBody');
+            const toggle = document.getElementById('cardToggle');
+            body.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
         }
     </script>
 </body>
