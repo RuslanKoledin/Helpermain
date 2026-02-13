@@ -208,6 +208,21 @@
             color: #c62828;
         }
 
+        .badge-tag {
+            font-size: 11px;
+            padding: 3px 8px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+        }
+
+        .tags-cell {
+            max-width: 200px;
+        }
+
+        .tags-cell .badge-tag {
+            display: inline-block;
+        }
+
         .actions-cell {
             display: flex;
             gap: 8px;
@@ -318,7 +333,9 @@
         <div class="header">
             <h1>🎯 Управление тренажером</h1>
             <div class="header-buttons">
+                <a href="{{ url_for('admin_trainer_audit') }}" class="btn btn-primary">📋 Журнал</a>
                 <a href="{{ url_for('admin_trainer_stats') }}" class="btn btn-primary">📊 Статистика</a>
+                <a href="{{ url_for('admin_trainer_import') }}" class="btn btn-primary" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);">📥 Импорт</a>
                 <a href="{{ url_for('admin_trainer_create') }}" class="btn btn-success">+ Создать сценарий</a>
                 <a href="{{ url_for('admin_logout') }}" class="btn btn-logout">Выход</a>
             </div>
@@ -376,6 +393,17 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="filter-group">
+                <label>Тег:</label>
+                <select id="filter-tag" onchange="applyFilters()">
+                    <option value="">Все теги</option>
+                    {% for tag in tags %}
+                    <option value="{{ tag.id }}" {% if current_tag == tag.id %}selected{% endif %}>
+                        {{ tag.icon }} {{ tag.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
         </div>
 
         <!-- Scenarios Table -->
@@ -387,6 +415,7 @@
                     <th>Название</th>
                     <th>Уровень</th>
                     <th>Категория</th>
+                    <th>Теги</th>
                     <th>Шагов</th>
                     <th>Статус</th>
                     <th>Действия</th>
@@ -409,6 +438,13 @@
                         {% else %}
                         <span style="color: #999;">—</span>
                         {% endif %}
+                    </td>
+                    <td class="tags-cell">
+                        {% for tag in scenario.tags %}
+                        <span class="badge badge-tag" style="background-color: {{ tag.color }}20; color: {{ tag.color }};">
+                            {{ tag.icon }} {{ tag.name }}
+                        </span>
+                        {% endfor %}
                     </td>
                     <td>{{ scenario.steps_count }}</td>
                     <td>
@@ -456,10 +492,12 @@
         function applyFilters() {
             const level = document.getElementById('filter-level').value;
             const category = document.getElementById('filter-category').value;
+            const tag = document.getElementById('filter-tag').value;
 
             let url = '{{ url_for("admin_trainer") }}?';
             if (level) url += 'level=' + level + '&';
-            if (category) url += 'category=' + category;
+            if (category) url += 'category=' + category + '&';
+            if (tag) url += 'tag=' + tag;
 
             window.location.href = url;
         }

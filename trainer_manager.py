@@ -137,12 +137,49 @@ class TrainerManager:
             )
         """)
 
+        # Журнал аудита (логирование изменений)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trainer_audit_log (
+                id INTEGER PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                user_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER,
+                entity_name TEXT,
+                changes_json TEXT,
+                ip_address TEXT
+            )
+        """)
+
+        # Теги для сценариев (карты, кредиты, депозиты и т.д.)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trainer_tags (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT DEFAULT '#607D8B',
+                icon TEXT DEFAULT '🏷️'
+            )
+        """)
+
+        # Связь многие-ко-многим: сценарий <-> теги
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trainer_scenario_tags (
+                scenario_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                PRIMARY KEY (scenario_id, tag_id),
+                FOREIGN KEY (scenario_id) REFERENCES trainer_scenarios(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES trainer_tags(id) ON DELETE CASCADE
+            )
+        """)
+
         # Индексы
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_scenarios_level ON trainer_scenarios(level_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_steps_scenario ON trainer_steps(scenario_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_answers_step ON trainer_answers(step_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_results_user ON trainer_results(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_progress_user ON trainer_user_progress(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_trainer_audit_timestamp ON trainer_audit_log(timestamp)")
 
         self.conn.commit()
 
@@ -154,6 +191,9 @@ class TrainerManager:
 
         # Инициализация начальных данных если таблицы пустые
         self._init_default_data()
+
+        # Инициализация тегов
+        self._init_default_tags()
 
     def _migrate_gamification_fields(self):
         """Миграция: добавление полей геймификации к существующим таблицам"""
@@ -289,6 +329,31 @@ class TrainerManager:
 
         # Создаем тестовые сценарии если их нет
         self._init_test_scenarios()
+
+    def _init_default_tags(self):
+        """Инициализация начальных тегов"""
+        cursor = self.conn.cursor()
+
+        # Проверяем есть ли теги
+        cursor.execute("SELECT COUNT(*) FROM trainer_tags")
+        if cursor.fetchone()[0] > 0:
+            return
+
+        # Создаем начальные теги
+        default_tags = [
+            ("Карты", "#2196F3", "💳"),
+            ("Кредиты", "#4CAF50", "💰"),
+            ("Депозиты", "#FF9800", "🏦"),
+            ("Переводы", "#9C27B0", "💸"),
+            ("Мобильное приложение", "#00BCD4", "📱"),
+            ("Корпоративные", "#795548", "🏢"),
+        ]
+
+        cursor.executemany("""
+            INSERT INTO trainer_tags (name, color, icon) VALUES (?, ?, ?)
+        """, default_tags)
+
+        self.conn.commit()
 
     def _init_test_scenarios(self):
         """Инициализация тестовых сценариев для базового уровня"""
@@ -1242,10 +1307,284 @@ class TrainerManager:
             'max_percent': row['max_percent'] or 0
         }
 
+    def get_all_users_progress(self) -> List[Dict]:
+        """Получить прогресс всех пользователей для экспорта"""
+        cursor = self.conn.cursor()
+
+        # Получаем всех пользователей с их статистикой
+        cursor.execute("""
+            SELECT
+                user_id,
+                COUNT(*) as total_completions,
+                COUNT(DISTINCT scenario_id) as unique_scenarios,
+                AVG(percent) as avg_percent,
+                MAX(percent) as best_percent,
+                MIN(completed_at) as first_completion,
+                MAX(completed_at) as last_completion,
+                SUM(CASE WHEN percent >= 80 THEN 1 ELSE 0 END) as excellent_count,
+                SUM(CASE WHEN percent >= 60 AND percent < 80 THEN 1 ELSE 0 END) as good_count,
+                SUM(CASE WHEN percent < 60 THEN 1 ELSE 0 END) as needs_work_count
+            FROM trainer_results
+            GROUP BY user_id
+            ORDER BY avg_percent DESC
+        """)
+
+        users = []
+        for row in cursor.fetchall():
+            users.append({
+                'user_id': row['user_id'],
+                'total_completions': row['total_completions'],
+                'unique_scenarios': row['unique_scenarios'],
+                'avg_percent': round(row['avg_percent'] or 0, 1),
+                'best_percent': row['best_percent'] or 0,
+                'first_completion': row['first_completion'],
+                'last_completion': row['last_completion'],
+                'excellent_count': row['excellent_count'],
+                'good_count': row['good_count'],
+                'needs_work_count': row['needs_work_count']
+            })
+
+        return users
+
+    def get_detailed_results(self) -> List[Dict]:
+        """Получить детальные результаты всех прохождений"""
+        cursor = self.conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                r.user_id,
+                s.title as scenario_title,
+                l.name as level_name,
+                r.score,
+                r.max_score,
+                r.percent,
+                r.completed_at,
+                r.is_game_over,
+                r.final_loyalty
+            FROM trainer_results r
+            JOIN trainer_scenarios s ON r.scenario_id = s.id
+            JOIN trainer_levels l ON s.level_id = l.id
+            ORDER BY r.completed_at DESC
+        """)
+
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                'user_id': row['user_id'],
+                'scenario_title': row['scenario_title'],
+                'level_name': row['level_name'],
+                'score': row['score'],
+                'max_score': row['max_score'],
+                'percent': row['percent'],
+                'completed_at': row['completed_at'],
+                'is_game_over': row['is_game_over'],
+                'final_loyalty': row['final_loyalty']
+            })
+
+        return results
+
     def close(self):
         """Закрытие соединения с БД"""
         if self.conn:
             self.conn.close()
+
+    # ==================== ТЕГИ ====================
+
+    def create_tag(self, name: str, color: str = '#607D8B', icon: str = '🏷️') -> Dict:
+        """Создать новый тег"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO trainer_tags (name, color, icon) VALUES (?, ?, ?)
+            """, (name, color, icon))
+            self.conn.commit()
+            return {"success": True, "id": cursor.lastrowid}
+        except sqlite3.IntegrityError:
+            return {"success": False, "error": "Тег с таким названием уже существует"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def update_tag(self, tag_id: int, data: Dict) -> Dict:
+        """Обновить тег"""
+        try:
+            allowed_fields = ['name', 'color', 'icon']
+            updates = {k: v for k, v in data.items() if k in allowed_fields}
+
+            if not updates:
+                return {"success": False, "error": "Нет полей для обновления"}
+
+            set_parts = [f"{field} = ?" for field in updates.keys()]
+            values = list(updates.values())
+            values.append(tag_id)
+
+            cursor = self.conn.cursor()
+            cursor.execute(f"""
+                UPDATE trainer_tags SET {', '.join(set_parts)} WHERE id = ?
+            """, values)
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def delete_tag(self, tag_id: int) -> Dict:
+        """Удалить тег"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM trainer_scenario_tags WHERE tag_id = ?", (tag_id,))
+            cursor.execute("DELETE FROM trainer_tags WHERE id = ?", (tag_id,))
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_all_tags(self) -> List[Dict]:
+        """Получить все теги"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM trainer_tags ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_tag_by_id(self, tag_id: int) -> Optional[Dict]:
+        """Получить тег по ID"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM trainer_tags WHERE id = ?", (tag_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def set_scenario_tags(self, scenario_id: int, tag_ids: List[int]) -> Dict:
+        """Установить теги сценарию (заменяет существующие)"""
+        try:
+            cursor = self.conn.cursor()
+            # Удаляем старые связи
+            cursor.execute("DELETE FROM trainer_scenario_tags WHERE scenario_id = ?", (scenario_id,))
+            # Добавляем новые
+            for tag_id in tag_ids:
+                cursor.execute("""
+                    INSERT INTO trainer_scenario_tags (scenario_id, tag_id) VALUES (?, ?)
+                """, (scenario_id, tag_id))
+            self.conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_scenario_tags(self, scenario_id: int) -> List[Dict]:
+        """Получить теги сценария"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT t.* FROM trainer_tags t
+            JOIN trainer_scenario_tags st ON t.id = st.tag_id
+            WHERE st.scenario_id = ?
+            ORDER BY t.name
+        """, (scenario_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_scenarios_by_tag(self, tag_id: int) -> List[Dict]:
+        """Получить сценарии по тегу"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT s.*, l.name as level_name, l.code as level_code,
+                   c.name as category_name, c.icon as category_icon
+            FROM trainer_scenarios s
+            JOIN trainer_levels l ON s.level_id = l.id
+            LEFT JOIN trainer_categories c ON s.category_id = c.id
+            JOIN trainer_scenario_tags st ON s.id = st.scenario_id
+            WHERE st.tag_id = ? AND s.is_active = 1
+            ORDER BY l.order_num, s.order_num
+        """, (tag_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    # ==================== АУДИТ ====================
+
+    def log_action(self, user_id: str, action: str, entity_type: str,
+                   entity_id: int = None, entity_name: str = None,
+                   changes: dict = None, ip_address: str = None):
+        """Записать действие в журнал аудита"""
+        cursor = self.conn.cursor()
+        try:
+            changes_json = json.dumps(changes, ensure_ascii=False) if changes else None
+            cursor.execute("""
+                INSERT INTO trainer_audit_log
+                (user_id, action, entity_type, entity_id, entity_name, changes_json, ip_address)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, action, entity_type, entity_id, entity_name, changes_json, ip_address))
+            self.conn.commit()
+        except Exception as e:
+            print(f"[log_action] Ошибка: {e}")
+
+    def get_audit_log(self, limit: int = 100, offset: int = 0,
+                      entity_type: str = None, user_id: str = None) -> List[Dict]:
+        """Получить журнал аудита"""
+        cursor = self.conn.cursor()
+
+        query = "SELECT * FROM trainer_audit_log WHERE 1=1"
+        params = []
+
+        if entity_type:
+            query += " AND entity_type = ?"
+            params.append(entity_type)
+
+        if user_id:
+            query += " AND user_id = ?"
+            params.append(user_id)
+
+        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(query, params)
+        logs = []
+        for row in cursor.fetchall():
+            log_entry = dict(row)
+            if log_entry.get('changes_json'):
+                try:
+                    log_entry['changes'] = json.loads(log_entry['changes_json'])
+                except:
+                    log_entry['changes'] = None
+            logs.append(log_entry)
+
+        return logs
+
+    def get_audit_stats(self) -> Dict:
+        """Получить статистику аудита"""
+        cursor = self.conn.cursor()
+
+        # Всего записей
+        cursor.execute("SELECT COUNT(*) FROM trainer_audit_log")
+        total = cursor.fetchone()[0]
+
+        # По типам действий
+        cursor.execute("""
+            SELECT action, COUNT(*) as count
+            FROM trainer_audit_log
+            GROUP BY action
+            ORDER BY count DESC
+        """)
+        by_action = {row['action']: row['count'] for row in cursor.fetchall()}
+
+        # По пользователям
+        cursor.execute("""
+            SELECT user_id, COUNT(*) as count
+            FROM trainer_audit_log
+            GROUP BY user_id
+            ORDER BY count DESC
+            LIMIT 10
+        """)
+        by_user = [dict(row) for row in cursor.fetchall()]
+
+        # За последние 7 дней
+        cursor.execute("""
+            SELECT DATE(timestamp) as date, COUNT(*) as count
+            FROM trainer_audit_log
+            WHERE timestamp >= datetime('now', '-7 days')
+            GROUP BY DATE(timestamp)
+            ORDER BY date DESC
+        """)
+        by_date = [dict(row) for row in cursor.fetchall()]
+
+        return {
+            'total': total,
+            'by_action': by_action,
+            'by_user': by_user,
+            'by_date': by_date
+        }
 
 
 # Пример использования

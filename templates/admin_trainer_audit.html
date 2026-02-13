@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Журнал изменений - Админ-панель</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0bb17c 0%, #007b7e 50%, #006064 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        h1 {
+            color: #007b7e;
+            font-size: 28px;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #007b7e;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        /* Log Table */
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .log-table th,
+        .log-table td {
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .log-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+            font-size: 13px;
+            text-transform: uppercase;
+            position: sticky;
+            top: 0;
+        }
+
+        .log-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .action-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .action-create {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .action-edit {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .action-delete {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .entity-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .timestamp {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .user-cell {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .ip-cell {
+            font-size: 12px;
+            color: #888;
+            font-family: monospace;
+        }
+
+        .changes-btn {
+            background: none;
+            border: 1px solid #007b7e;
+            color: #007b7e;
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .changes-btn:hover {
+            background: #007b7e;
+            color: white;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal h3 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .modal pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .modal-close {
+            margin-top: 20px;
+            width: 100%;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .pagination a {
+            padding: 8px 16px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.2s;
+        }
+
+        .pagination a:hover {
+            background: #007b7e;
+            color: white;
+        }
+
+        .pagination .current {
+            background: #007b7e;
+            color: white;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .back-link {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            font-size: 14px;
+            text-decoration: none;
+            color: #ffffff;
+            font-weight: 600;
+            background: rgba(255, 165, 0, 0.3);
+            backdrop-filter: blur(10px);
+            padding: 8px 16px;
+            border: 2px solid rgba(255, 165, 0, 0.5);
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .back-link:hover {
+            background: rgba(255, 165, 0, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <a href="{{ url_for('admin_trainer') }}" class="back-link">
+        &larr; К тренажеру
+    </a>
+
+    <div class="container">
+        <div class="header">
+            <h1>📋 Журнал изменений</h1>
+            <div class="header-buttons">
+                <a href="{{ url_for('admin_trainer_audit_export') }}" class="btn btn-success">📥 Экспорт в Excel</a>
+                <a href="{{ url_for('admin_trainer_stats') }}" class="btn btn-primary">📊 Статистика</a>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.total }}</div>
+                <div class="stat-label">Всего записей</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.by_action.get('create', 0) }}</div>
+                <div class="stat-label">Создано</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.by_action.get('edit', 0) }}</div>
+                <div class="stat-label">Изменено</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.by_action.get('delete', 0) }}</div>
+                <div class="stat-label">Удалено</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.by_user | length }}</div>
+                <div class="stat-label">Пользователей</div>
+            </div>
+        </div>
+
+        <!-- Log Table -->
+        {% if logs %}
+        <table class="log-table">
+            <thead>
+                <tr>
+                    <th>Дата/Время</th>
+                    <th>Пользователь</th>
+                    <th>Действие</th>
+                    <th>Тип</th>
+                    <th>Объект</th>
+                    <th>IP</th>
+                    <th>Детали</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td class="timestamp">{{ log.timestamp }}</td>
+                    <td class="user-cell">{{ log.user_id }}</td>
+                    <td>
+                        <span class="action-badge action-{{ log.action }}">
+                            {% if log.action == 'create' %}Создание
+                            {% elif log.action == 'edit' %}Изменение
+                            {% elif log.action == 'delete' %}Удаление
+                            {% else %}{{ log.action }}{% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="entity-badge">
+                            {% if log.entity_type == 'scenario' %}Сценарий
+                            {% elif log.entity_type == 'step' %}Шаг
+                            {% elif log.entity_type == 'answer' %}Ответ
+                            {% else %}{{ log.entity_type }}{% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if log.entity_name %}
+                            <strong>{{ log.entity_name }}</strong>
+                            <br><small style="color:#888">ID: {{ log.entity_id }}</small>
+                        {% else %}
+                            ID: {{ log.entity_id }}
+                        {% endif %}
+                    </td>
+                    <td class="ip-cell">{{ log.ip_address or '—' }}</td>
+                    <td>
+                        {% if log.changes_json %}
+                        <button class="changes-btn" onclick="showChanges('{{ log.changes_json | e }}')">
+                            Показать
+                        </button>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}">&larr; Назад</a>
+            {% endif %}
+            <span class="current">Страница {{ page }}</span>
+            {% if logs | length == 50 %}
+            <a href="?page={{ page + 1 }}">Вперёд &rarr;</a>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p style="font-size: 48px; margin-bottom: 20px;">📝</p>
+            <p>Журнал изменений пуст</p>
+            <p style="margin-top: 10px; color: #888;">Здесь будут отображаться все изменения сценариев</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Changes Modal -->
+    <div class="modal-overlay" id="changesModal">
+        <div class="modal">
+            <h3>Детали изменений</h3>
+            <pre id="changesContent"></pre>
+            <button class="btn btn-secondary modal-close" onclick="closeModal()">Закрыть</button>
+        </div>
+    </div>
+
+    <script>
+        function showChanges(changesJson) {
+            try {
+                const changes = JSON.parse(changesJson.replace(/&quot;/g, '"'));
+                document.getElementById('changesContent').textContent = JSON.stringify(changes, null, 2);
+            } catch (e) {
+                document.getElementById('changesContent').textContent = changesJson;
+            }
+            document.getElementById('changesModal').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('changesModal').classList.remove('show');
+        }
+
+        document.getElementById('changesModal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+    </script>
+</body>
+</html>
