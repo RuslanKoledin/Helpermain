@@ -250,33 +250,33 @@
         }
 
         .back-link {
-    position: fixed;
-    top: 20px;
-    left: 20px;
-    z-index: 1000;
-    font-size: 16px;
-    text-decoration: none;
-    color: #ffffff;
-    font-weight: 600;
-    background: rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(10px);
-    padding: 10px 20px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 25px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-}
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            font-size: 14px;
+            text-decoration: none;
+            color: #e8e8e8;
+            font-weight: 600;
+            background: rgba(0, 166, 81, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 10px 18px;
+            border: 1px solid rgba(0, 166, 81, 0.3);
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
 
-.back-link:hover {
-    background: rgba(255, 255, 255, 0.3);
-    border-color: rgba(255, 255, 255, 0.5);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-    text-decoration: none;
-}
+        .back-link:hover {
+            background: rgba(0, 166, 81, 0.25);
+            border-color: rgba(0, 166, 81, 0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
+    <a href="{{ url_for('show_problems') }}" class="back-link">⬅️ Назад</a>
     <div class="container">
         <h2>Пожалуйста, опишите вашу проблему как можно подробнее.</h2>
         <form action="{{ url_for('other_problem') }}" method="POST" enctype="multipart/form-data">
